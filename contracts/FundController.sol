@@ -64,7 +64,7 @@ contract FundController is Ownable
         {
             // THE RATE WILL RUN INTO PROBLEMS IF
             // THE TOTAL VALUE IS < $1
-            uint256 totalValue = IFundToken.getTotalValueOfFund();
+            uint256 totalValue = s_IFundToken.getTotalValueOfFund();
             rate = totalValue / s_IFundToken.totalSupply();
         }
         uint256 amountToMint = _rawAmount * unitConversion * rate;

@@ -14,7 +14,6 @@ struct asset
 contract FundToken is ERC20, Ownable
 {
     asset[] public s_supportedAssets;
-    address public s_controllerAddress;
 
     // NOTE: Here the owner of the token is the controller
     constructor(address _controllerAddress)

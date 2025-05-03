@@ -13,8 +13,8 @@ contract FundController is Ownable
     uint256 public s_governorPercentrageReward;
     uint256 public s_minToMint;
 
-    IERC20Extended public s_IUSDC;
-    IFundToken public s_IFundToken;
+    IERC20Extended private s_IUSDC;
+    IFundToken private s_IFundToken;
 
     constructor(uint256 _initialEpochTime,
                uint256 _initialProposalPercentageReward,

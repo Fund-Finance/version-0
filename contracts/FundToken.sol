@@ -16,9 +16,13 @@ contract FundToken is ERC20, Ownable
     asset[] public s_supportedAssets;
 
     // NOTE: Here the owner of the token is the controller
-    constructor(address _controllerAddress)
+    constructor(address _controllerAddress, address _baseTokenAddress,
+                address _baseTokenAggregatorAddress)
         ERC20("FundToken", "FUND") Ownable(_controllerAddress)
-    {}
+    {
+        s_supportedAssets.push(asset(
+            IERC20(_baseTokenAddress), AggregatorV3Interface(_baseTokenAggregatorAddress)));
+    }
 
     function mint(address _to, uint256 _amount) external onlyOwner
     {

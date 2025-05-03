@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/IERC20Extended.sol";
 import "./interfaces/IFundToken.sol";
+import "./FundToken.sol";
 
 contract FundController is Ownable
 {
@@ -44,9 +45,9 @@ contract FundController is Ownable
     function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
     { s_governorPercentrageReward = _percentage; }
 
-    function issueStableCoin(address _to, uint256 _rawAmount) external onlyOwner
+    function issueStableCoin(uint256 _rawAmount) external onlyOwner
     {
-        uint256 allowance = s_IUSDC.allowance(_to, address(this));
+        uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
         require(allowance >= _rawAmount, "You must approve the contract to spend your USDC");
 
         // TODO: Look over this math and make sure
@@ -63,7 +64,7 @@ contract FundController is Ownable
         {
             // THE RATE WILL RUN INTO PROBLEMS IF
             // THE TOTAL VALUE IS < $1
-            uint256 totalValue = _getTotalValueOfFund();
+            uint256 totalValue = IFundToken.getTotalValueOfFund();
             rate = totalValue / s_IFundToken.totalSupply();
         }
         uint256 amountToMint = _rawAmount * unitConversion * rate;
@@ -72,21 +73,16 @@ contract FundController is Ownable
         // check allowance
 
         // then perform the transfer from function
+        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawAmount);
 
-
-        s_IFundToken.mint(_to, amountToMint);
+        s_IFundToken.mint(msg.sender, amountToMint);
     }
 
 
-    function _getTotalValueOfFund() internal view returns (uint256)
+
+    function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
     {
-        uint256 totalValue = 0;
-        address[] memory assets = s_IFundToken.s_assets();
-        for (uint256 i = 0; i < assets.length; i++)
-        {
-            totalValue += IERC20(assets[i]).balanceOf(address(this));
-        }
-        return totalValue;
+        s_IFundToken.addAsset(_assetAddress, _aggregatorAddress);
     }
 
 }

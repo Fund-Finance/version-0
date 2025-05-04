@@ -72,6 +72,44 @@ describe("Fund Functionalities", function ()
          })
     })
 
+    describe("Mock Aggregator", function ()
+    {
+        it("Should return the correct updated values", async function ()
+        {
+            const ethUsdcMockAggregatorDecimals = 8n;
+            const ethUsdcMockAggregatorInitialAnswer = 1800n * 10n ** ethUsdcMockAggregatorDecimals;
+            const ethUsdcMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
+                [ethUsdcMockAggregatorDecimals, ethUsdcMockAggregatorInitialAnswer]);
+            await ethUsdcMockAggregator.waitForDeployment();
+
+            expect(await ethUsdcMockAggregator.decimals()).to.equal(ethUsdcMockAggregatorDecimals);
+            const firstRoundData = await ethUsdcMockAggregator.latestRoundData();
+
+            // the round number
+            expect(firstRoundData[0]).to.equal(1);
+
+            // the answer
+            expect(firstRoundData[1]).to.equal(ethUsdcMockAggregatorInitialAnswer);
+
+            // save the start time
+            const startTime = firstRoundData[2];
+
+            // on initialization the start time and update time are the same
+            expect(startTime).to.equal(firstRoundData[3]);
+
+            const newEthPrice = 2000n
+            await ethUsdcMockAggregator.updateAnswer(newEthPrice * 10n ** ethUsdcMockAggregatorDecimals);
+
+            const secondRoundData = await ethUsdcMockAggregator.latestRoundData();
+
+            // the round number
+            expect(secondRoundData[0]).to.equal(2);
+
+            // the answer
+            expect(secondRoundData[1]).to.equal(newEthPrice * 10n ** ethUsdcMockAggregatorDecimals);
+        })
+    })
+
     describe("Fund Controller", function ()
     {
         it("Should set the setter fields correctly", async function ()

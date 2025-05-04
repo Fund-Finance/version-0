@@ -26,6 +26,16 @@ describe("Fund Functionalities", function ()
         // check the initial supply of the mock usdc
         expect(await usdcMock.totalSupply()).to.equal(usdcMockTotalSupply * 10n ** usdcMockDecimals);
 
+        // get a usdc mock aggregator
+        const usdcMockAggregatorDecimals = 8n;
+        const usdcMockAggregatorInitialAnswer = 1n * 10n ** usdcMockAggregatorDecimals;
+        const usdcMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
+            [usdcMockAggregatorDecimals, usdcMockAggregatorInitialAnswer]);
+        await usdcMockAggregator.waitForDeployment();
+
+        expect(await usdcMockAggregator.decimals()).to.equal(usdcMockAggregatorDecimals);
+
+
         const initialEpochTime = oneDay;
         const initialPercentageFeeProposers = 1;
         const initialPercentageFeeGovernors = 1;
@@ -38,7 +48,8 @@ describe("Fund Functionalities", function ()
         expect(await fundController.s_proposalPercentageReward()).to.equal(initialPercentageFeeProposers);
         expect(await fundController.s_governorPercentrageReward()).to.equal(initialPercentageFeeGovernors);
 
-        const fundToken = await hre.ethers.deployContract("FundToken",[await fundController.getAddress()]);
+        const fundToken = await hre.ethers.deployContract("FundToken",
+            [await fundController.getAddress(), await usdcMock.getAddress(), await usdcMockAggregator.getAddress()]);
         await fundToken.waitForDeployment();
 
         fundController.initialize(await fundToken.getAddress());

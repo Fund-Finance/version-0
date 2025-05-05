@@ -14,9 +14,6 @@ describe("Fund Functionalities", function ()
     {
         const [owner] = await hre.ethers.getSigners();
 
-        // const mockAggregator = await hre.ethers.deployContract("MockV3Aggregator", [6, 1000000]);
-        // await mockAggregator.waitForDeployment();
-
         const usdcMockTotalSupply = 1000000000n;
         const usdcMockDecimals = 6n
         const usdcMock = await hre.ethers.deployContract("GenericERC20Mock",
@@ -52,9 +49,15 @@ describe("Fund Functionalities", function ()
             [await fundController.getAddress(), await usdcMock.getAddress(), await usdcMockAggregator.getAddress()]);
         await fundToken.waitForDeployment();
 
+        // check the base asset
+        let assets = await fundToken.getAssets();
+        expect(assets.length).to.equal(1);
+        expect(assets[0].token).to.equal(await usdcMock.getAddress());
+        expect(assets[0].aggregator).to.equal(await usdcMockAggregator.getAddress());
+
         fundController.initialize(await fundToken.getAddress());
 
-        return { owner, usdcMock, fundToken, fundController }
+        return { owner, fundToken, fundController, usdcMock, usdcMockAggregator };
         
     }
 
@@ -140,7 +143,55 @@ describe("Fund Functionalities", function ()
     {
         it("Should add an asset to the fund token", async function ()
         {
-            
+            const { fundToken, fundController, usdcMock, usdcMockAggregator } = await loadFixture(contractDeploymentFixture);
+
+            const wethMockTotalSupply = 1000000000n;
+            const wethMockDecimals = 18n
+            const wethMock = await hre.ethers.deployContract("GenericERC20Mock",
+                        ["WETH Mock", "WETHM", wethMockDecimals, wethMockTotalSupply]);
+            await wethMock.waitForDeployment();
+
+            // get a usdc mock aggregator
+            const wethMockAggregatorDecimals = 8n;
+            const wethMockAggregatorInitialAnswer = 1n * 10n ** wethMockAggregatorDecimals;
+            const wethMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
+                [wethMockAggregatorDecimals, wethMockAggregatorInitialAnswer]);
+            await wethMockAggregator.waitForDeployment();
+
+            await fundController.addAssetToFund(await wethMock.getAddress(), await wethMockAggregator.getAddress());
+
+            // check if the fund token has the asset
+            let assets = await fundToken.getAssets();
+            expect(assets.length).to.equal(2);
+            expect(assets[0].token).to.equal(await usdcMock.getAddress());
+            expect(assets[0].aggregator).to.equal(await usdcMockAggregator.getAddress());
+            expect(assets[1].token).to.equal(await wethMock.getAddress());
+            expect(assets[1].aggregator).to.equal(await wethMockAggregator.getAddress());
+
+            // now add another asset
+            const wbtcMockTotalSupply = 1000000000n;
+            const wbtcMockDecimals = 18n
+            const wbtcMock = await hre.ethers.deployContract("GenericERC20Mock",
+                        ["WBTC Mock", "WBTCM", wbtcMockDecimals, wbtcMockTotalSupply]);
+            await wbtcMock.waitForDeployment();
+
+            // get a usdc mock aggregator
+            const wbtcMockAggregatorDecimals = 8n;
+            const wbtcMockAggregatorInitialAnswer = 1n * 10n ** wbtcMockAggregatorDecimals;
+            const wbtcMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
+                [wbtcMockAggregatorDecimals, wbtcMockAggregatorInitialAnswer]);
+            await wbtcMockAggregator.waitForDeployment();
+
+            await fundController.addAssetToFund(await wbtcMock.getAddress(), await wbtcMockAggregator.getAddress());
+
+            // check if the fund token has the asset
+            assets = await fundToken.getAssets();
+            expect(assets[0].token).to.equal(await usdcMock.getAddress());
+            expect(assets[0].aggregator).to.equal(await usdcMockAggregator.getAddress());
+            expect(assets[1].token).to.equal(await wethMock.getAddress());
+            expect(assets[1].aggregator).to.equal(await wethMockAggregator.getAddress());
+            expect(assets[2].token).to.equal(await wbtcMock.getAddress());
+            expect(assets[2].aggregator).to.equal(await wbtcMockAggregator.getAddress());
         })
     })
 });

@@ -7,8 +7,8 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/Ag
 
 struct asset
 {
-    IERC20 tokenInterface;
-    AggregatorV3Interface aggregatorInterface;
+    IERC20 token;
+    AggregatorV3Interface aggregator;
 }
 
 contract FundToken is ERC20, Ownable
@@ -48,11 +48,15 @@ contract FundToken is ERC20, Ownable
              int256 answer,
             ,
             ,
-            ) = s_supportedAssets[i].aggregatorInterface.latestRoundData();
-            totalValue += uint256(answer) * s_supportedAssets[i].tokenInterface.balanceOf(address(this));
+            ) = s_supportedAssets[i].aggregator.latestRoundData();
+            totalValue += uint256(answer) * s_supportedAssets[i].token.balanceOf(address(this));
 
         }
         return totalValue;
     }
 
+    function getAssets() external view returns (asset[] memory)
+    {
+        return s_supportedAssets;
+    }
 }

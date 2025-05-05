@@ -139,7 +139,7 @@ describe("Fund Functionalities", function ()
             expect(await fundController.s_governorPercentrageReward()).to.equal(newPercentageFeeGovernors);
 
         })
-        it.only("Should mint the fund token correctly: single token", async function ()
+        it("Should mint the fund token correctly: single token", async function ()
         {
             const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
             

@@ -55,7 +55,7 @@ describe("Fund Functionalities", function ()
         expect(assets[0].token).to.equal(await usdcMock.getAddress());
         expect(assets[0].aggregator).to.equal(await usdcMockAggregator.getAddress());
 
-        fundController.initialize(await fundToken.getAddress());
+        await fundController.initialize(await fundToken.getAddress());
 
         return { owner, fundToken, fundController, usdcMock, usdcMockAggregator };
         

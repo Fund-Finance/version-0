@@ -55,4 +55,8 @@ contract FundToken is ERC20, Ownable
         return totalValue;
     }
 
+    function getAssets() external view returns (asset[] memory)
+    {
+        return s_supportedAssets;
+    }
 }

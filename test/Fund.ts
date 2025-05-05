@@ -138,6 +138,47 @@ describe("Fund Functionalities", function ()
             expect(await fundController.s_governorPercentrageReward()).to.equal(newPercentageFeeGovernors);
 
         })
+        it.only("Should mint the fund token correctly: single token", async function ()
+        {
+            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
+            
+            const AmountToSendOwner = 1000n;
+            const usdcMockContractSigner = await hre.ethers.getImpersonatedSigner(await usdcMock.getAddress());
+            await usdcMock.connect(usdcMockContractSigner).transfer(owner.address,
+                         AmountToSendOwner * 10n ** await usdcMock.decimals());
+            
+            // check the balance of the usdcMock contract that the transfer left
+            // its wallet
+            expect(await usdcMock.balanceOf(usdcMockContractSigner.address)).to.equal(
+                await usdcMock.totalSupply() - AmountToSendOwner * 10n ** await usdcMock.decimals());
+
+            // now check the owner's balance
+            expect(await usdcMock.balanceOf(owner.address)).to.equal(AmountToSendOwner * 10n ** await usdcMock.decimals());
+
+            // now in order to mint we need to approve the fund Controller to spend
+            // on our behalf
+            await usdcMock.connect(owner).approve(await fundController.getAddress(),
+                AmountToSendOwner * 10n ** await usdcMock.decimals());
+
+            // check that the allowance updated correctly
+            expect(await usdcMock.allowance(owner.address, await fundController.getAddress())).to.equal(
+                AmountToSendOwner * 10n ** await usdcMock.decimals());
+
+            // now we can mint the fund token
+            // first let's check that the total total supply
+            // of the fund token is 0
+            expect(await fundToken.totalSupply()).to.equal(0n);
+            
+            await fundController.issueStableCoin(AmountToSendOwner * 10n ** await usdcMock.decimals());
+
+            // check the fund token total supply
+            // NOTE: for the initial mint 1 fund token = 1 usdc
+            expect(await fundToken.totalSupply()).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+
+            // check the fund token balance of the minter
+            expect(await fundToken.balanceOf(owner.address)).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+
+        })
     })
     describe("Fund Token", function ()
     {

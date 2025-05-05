@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "./interfaces/IERC20Extended.sol";
 import "./interfaces/IFundToken.sol";
 import "./FundToken.sol";
@@ -16,16 +17,19 @@ contract FundController is Ownable
     IERC20Extended private s_IUSDC;
     IFundToken private s_IFundToken;
 
+    ISwapRouter public immutable swapRouter;
+
     constructor(uint256 _initialEpochTime,
                uint256 _initialProposalPercentageReward,
                uint256 _initialGovernorPercentageReward,
-               address _usdcAddress)
+               address _usdcAddress, address swapRounterAddress)
                Ownable(msg.sender)
     {
         s_epochTime = _initialEpochTime;
         s_proposalPercentageReward = _initialProposalPercentageReward;
         s_governorPercentrageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
+        swapRouter = ISwapRouter(swapRounterAddress);
 
     }
 
@@ -78,11 +82,13 @@ contract FundController is Ownable
         s_IFundToken.mint(msg.sender, amountToMint);
     }
 
-
-
     function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
     {
         s_IFundToken.addAsset(_assetAddress, _aggregatorAddress);
     }
 
+    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
+    {
+
+    }
 }

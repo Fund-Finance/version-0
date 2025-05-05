@@ -8,6 +8,7 @@ import hre from "hardhat";
 
 
 const oneDay = 24n * 60n * 60n;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 describe("Fund Functionalities", function ()
 {
     async function contractDeploymentFixture()
@@ -32,12 +33,12 @@ describe("Fund Functionalities", function ()
 
         expect(await usdcMockAggregator.decimals()).to.equal(usdcMockAggregatorDecimals);
 
-
         const initialEpochTime = oneDay;
         const initialPercentageFeeProposers = 1;
         const initialPercentageFeeGovernors = 1;
         const fundController = await hre.ethers.deployContract("FundController",
-               [initialEpochTime, initialPercentageFeeProposers, initialPercentageFeeGovernors, await usdcMock.getAddress()]);
+               [initialEpochTime, initialPercentageFeeProposers, initialPercentageFeeGovernors,
+                   await usdcMock.getAddress(), ZERO_ADDRESS]); // ZERO_ADDRESS for now
 
         await fundController.waitForDeployment();
 

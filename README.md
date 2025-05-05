@@ -1,4 +1,11 @@
 # version-0
+
+## To Install:
+1) Clone this repository and cd into it
+2) Run `npm install` to install all of the project dependencies
+3) Then run `npx hardhat compile` to compile the smart contracts
+4) Then run `npx hardhat test` to run the test cases
+
 ## Releases:
 
 ### v0.1:

@@ -5,7 +5,9 @@ import {
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import hre from "hardhat";
-
+import network from "hardhat"
+import { IERC20Extended } from "../typechain-types";
+import { mine } from "@nomicfoundation/hardhat-network-helpers";
 
 const oneDay = 24n * 60n * 60n;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -47,7 +49,8 @@ describe("Fund Functionalities", function ()
         expect(await fundController.s_governorPercentrageReward()).to.equal(initialPercentageFeeGovernors);
 
         const fundToken = await hre.ethers.deployContract("FundToken",
-            [await fundController.getAddress(), await usdcMock.getAddress(), await usdcMockAggregator.getAddress()]);
+            [await fundController.getAddress(), await usdcMock.getAddress(), await usdcMockAggregator.getAddress(),
+            ZERO_ADDRESS]);
         await fundToken.waitForDeployment();
 
         // check the base asset
@@ -60,6 +63,45 @@ describe("Fund Functionalities", function ()
 
         return { owner, fundToken, fundController, usdcMock, usdcMockAggregator };
         
+    }
+
+    async function contractDeploymentForkedFixture()
+    {
+        const [owner] = await hre.ethers.getSigners();
+
+        const usdcAddress_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        const usdcAggregatorAddress_BASE = "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B";
+        // const usdcAggregator_BASE = await hre.ethers.getContractAt("AggregatorV3Interface", usdcAggregatorAddress_BASE);
+
+        const uniswapRouterAddress_BASE = "0x2626664c2603336E57B271c5C0b26F421741e481";
+
+        const initialEpochTime = oneDay;
+        const initialPercentageFeeProposers = 1;
+        const initialPercentageFeeGovernors = 1;
+        const fundController = await hre.ethers.deployContract("FundController",
+               [initialEpochTime, initialPercentageFeeProposers, initialPercentageFeeGovernors,
+                   usdcAddress_BASE, uniswapRouterAddress_BASE]); // ZERO_ADDRESS for now
+
+        await fundController.waitForDeployment();
+
+        expect(await fundController.s_epochTime()).to.equal(initialEpochTime);
+        expect(await fundController.s_proposalPercentageReward()).to.equal(initialPercentageFeeProposers);
+        expect(await fundController.s_governorPercentrageReward()).to.equal(initialPercentageFeeGovernors);
+
+        const fundToken = await hre.ethers.deployContract("FundToken",
+            [await fundController.getAddress(), usdcAddress_BASE, usdcAggregatorAddress_BASE,
+            uniswapRouterAddress_BASE]);
+        await fundToken.waitForDeployment();
+
+        // check the base asset
+        let assets = await fundToken.getAssets();
+        expect(assets.length).to.equal(1);
+        expect(assets[0].token).to.equal(usdcAddress_BASE);
+        expect(assets[0].aggregator).to.equal(usdcAggregatorAddress_BASE);
+
+        await fundController.initialize(await fundToken.getAddress());
+
+        return { owner, fundToken, fundController };
     }
 
     describe("Initialization", function ()
@@ -145,7 +187,7 @@ describe("Fund Functionalities", function ()
             // check the new percentage fee for the proposers
             expect(await fundController.s_proposalPercentageReward()).to.equal(newPercentageFeeProposers);
 
-            // set the new percentage fee for the governors to 2%
+            // set the new percentage fee for the governors to 3%
             const newPercentageFeeGovernors = 3;
             await fundController.setGovernorPercentageReward(newPercentageFeeGovernors);
             // check the new percentage fee for the governors
@@ -195,6 +237,9 @@ describe("Fund Functionalities", function ()
 
             // check the fund token balance of the minter
             expect(await fundToken.balanceOf(owner.address)).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+
+            // check that the fund token has received usdc 
+            expect(await usdcMock.balanceOf(fundToken.getAddress())).to.equal(AmountToSendOwner * 10n ** await usdcMock.decimals());
 
         })
     })
@@ -255,6 +300,122 @@ describe("Fund Functionalities", function ()
             expect(assets[1].aggregator).to.equal(await wethMockAggregator.getAddress());
             expect(assets[2].token).to.equal(await wbtcMock.getAddress());
             expect(assets[2].aggregator).to.equal(await wbtcMockAggregator.getAddress());
+        })
+        it("Should preform a swap correctly", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+            // this mine(1) needs to be here, it is an odd bug with hardhat
+            await mine(1);
+            const { owner, fundToken, fundController } = await loadFixture(contractDeploymentForkedFixture);
+           
+            // console.log(await hre.ethers.provider.getBlock("latest"));
+
+            const cbBTCWhaleAddress_BASE = "0xBdb9300b7CDE636d9cD4AFF00f6F009fFBBc8EE6";
+            const wETHWhaleAddress_BASE = "0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7";
+            const usdcWhaleAddress_BASE = "0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3";
+
+            // impersonate the whales
+            const cbBTCWhaleSigner = await hre.ethers.getImpersonatedSigner(cbBTCWhaleAddress_BASE);
+            const wETHWhaleSigner = await hre.ethers.getImpersonatedSigner(wETHWhaleAddress_BASE);
+            const usdcWhaleSigner = await hre.ethers.getImpersonatedSigner(usdcWhaleAddress_BASE);
+
+            const cbBTCaddress_BASE = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+            const wETHAddress_BASE = "0x4200000000000000000000000000000000000006";
+            const usdcAddress_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+
+            // aggregator addresses:
+            const cbBTCAggregatorAddress_BASE = "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D";
+            // TODO: This is really the ETH/USD aggregator, I couldn't find the wETH aggregator
+            // We need to check if this will make a difference
+            const wETHAggregatorAddress_BASE = "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70";
+            const usdcAggregatorAddress_BASE = "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B";
+
+            // get the contracts
+            const cbBTC = await hre.ethers.getContractAt("IERC20Extended", cbBTCaddress_BASE);
+            const wETH = await hre.ethers.getContractAt("IERC20Extended", wETHAddress_BASE);
+            const usdc = await hre.ethers.getContractAt("IERC20Extended", usdcAddress_BASE);
+
+            // send some tokens to the owner
+            const AmountToSendOwner_cbBTC = 2n;
+            const AmountToSendOwner_wETH = 5n;
+            const AmountToSendOwner_usdc = 100000000n;
+            await cbBTC.connect(cbBTCWhaleSigner).transfer(owner.address,
+                AmountToSendOwner_cbBTC * 10n ** await cbBTC.decimals());
+            await wETH.connect(wETHWhaleSigner).transfer(owner.address,
+                AmountToSendOwner_wETH * 10n ** await wETH.decimals());
+            await usdc.connect(usdcWhaleSigner).transfer(owner.address,
+                AmountToSendOwner_usdc * 10n ** await usdc.decimals());
+
+            // check that the balance of the owner is correct
+            expect(await cbBTC.balanceOf(owner.address)).to.equal(
+                AmountToSendOwner_cbBTC * 10n ** await cbBTC.decimals());
+            expect(await wETH.balanceOf(owner.address)).to.equal(
+                AmountToSendOwner_wETH * 10n ** await wETH.decimals());
+            expect(await usdc.balanceOf(owner.address)).to.equal(
+                AmountToSendOwner_usdc * 10n ** await usdc.decimals());
+
+
+            // now mint the fund token
+            const amountToSpend = 100000n;
+            await usdc.connect(owner).approve(await fundController.getAddress(),
+                amountToSpend * 10n ** await usdc.decimals());
+
+            // check that the allowance updated correctly
+            expect(await usdc.allowance(owner.address, await fundController.getAddress())).to.equal(
+                amountToSpend * 10n ** await usdc.decimals());
+
+            // now we can mint the fund token
+            // first let's check that the total total supply
+            // of the fund token is 0
+            expect(await fundToken.totalSupply()).to.equal(0n);
+            
+            await fundController.issueStableCoin(amountToSpend * 10n ** await usdc.decimals());
+
+            expect(await fundToken.totalSupply()).to.equal(amountToSpend * 10n ** await fundToken.decimals());
+
+            // check the fund token balance of the minter
+            expect(await fundToken.balanceOf(owner.address)).to.equal(amountToSpend * 10n ** await fundToken.decimals());
+
+            // check that the fund token has received usdc
+            expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(amountToSpend * 10n ** await usdc.decimals());
+
+
+            await fundController.addAssetToFund(await wETH.getAddress(), wETHAggregatorAddress_BASE);
+            await fundController.addAssetToFund(await cbBTC.getAddress(), cbBTCAggregatorAddress_BASE);
+
+            let assets = await fundToken.getAssets();
+            expect(assets[0].token).to.equal(await usdc.getAddress());
+            expect(assets[0].aggregator).to.equal(usdcAggregatorAddress_BASE);
+            expect(assets[1].token).to.equal(await wETH.getAddress());
+            expect(assets[1].aggregator).to.equal(wETHAggregatorAddress_BASE);
+            expect(assets[2].token).to.equal(await cbBTC.getAddress());
+            expect(assets[2].aggregator).to.equal(cbBTCAggregatorAddress_BASE);
+
+            // now we can swap the tokens
+            // we will swap usdc for cbBTC
+            
+            // first check that the fund token has no cbBTC
+            expect(await cbBTC.balanceOf(fundToken.getAddress())).to.equal(0n);
+
+            // now swap
+            // const uniswapRouterAddress_BASE = "0x2626664c2603336E57B271c5C0b26F421741e481";
+            // const fundTokenSigner = await hre.ethers.getImpersonatedSigner(await fundToken.getAddress());
+            // await usdc.connect(fundTokenSigner).approve(uniswapRouterAddress_BASE, 1000000000000n);
+
+            const amountOfUSDCToSwap = amountToSpend - 150n;
+            console.log(amountOfUSDCToSwap * 10n ** await usdc.decimals());
+
+            console.log("Fund Token USDC balance: ", await usdc.balanceOf(fundToken.getAddress()));
+            await fundController.swapAsset(usdcAddress_BASE, cbBTCaddress_BASE,
+                                           amountOfUSDCToSwap * 10n ** await usdc.decimals());
+
+            console.log("Fund Token USDC balance: ", await usdc.balanceOf(fundToken.getAddress()));
+            console.log("Fund Token cbBTC balance: ", await cbBTC.balanceOf(fundToken.getAddress()));
+
         })
     })
 });

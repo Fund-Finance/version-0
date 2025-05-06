@@ -28,7 +28,7 @@ const config: HardhatUserConfig = {
         // but for now assume gas prices are 0
         gasPrice: 0,
         initialBaseFeePerGas: 0,
-    }
+    },
   }
 };
 

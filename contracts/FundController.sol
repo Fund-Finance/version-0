@@ -2,10 +2,14 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+// import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import "./interfaces/IERC20Extended.sol";
 import "./interfaces/IFundToken.sol";
 import "./FundToken.sol";
+import "./interfaces/ISwapRouterExtended.sol";
+
+import "hardhat/console.sol";
 
 contract FundController is Ownable
 {
@@ -17,7 +21,7 @@ contract FundController is Ownable
     IERC20Extended private s_IUSDC;
     IFundToken private s_IFundToken;
 
-    ISwapRouter public immutable swapRouter;
+    ISwapRouterExtended public immutable swapRouter;
 
     constructor(uint256 _initialEpochTime,
                uint256 _initialProposalPercentageReward,
@@ -29,7 +33,7 @@ contract FundController is Ownable
         s_proposalPercentageReward = _initialProposalPercentageReward;
         s_governorPercentrageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
-        swapRouter = ISwapRouter(swapRounterAddress);
+        swapRouter = ISwapRouterExtended(swapRounterAddress);
 
     }
 
@@ -88,7 +92,9 @@ contract FundController is Ownable
     }
 
     function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
+        returns (uint256 amountOut)
     {
-
+        amountOut = s_IFundToken.swapAsset(_assetToTrade, _assetToGet, _amountIn);
+        return amountOut;
     }
 }

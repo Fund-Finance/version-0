@@ -66,6 +66,10 @@ describe("Fund Functionalities", function ()
     {
         it("Should deploy the contracts correctly", async function ()
         {
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
             const { owner, fundToken, fundController } = await loadFixture(contractDeploymentFixture);
 
             // check the ownership of the fund token
@@ -80,6 +84,10 @@ describe("Fund Functionalities", function ()
     {
         it("Should return the correct updated values", async function ()
         {
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
             const ethUsdcMockAggregatorDecimals = 8n;
             const ethUsdcMockAggregatorInitialAnswer = 1800n * 10n ** ethUsdcMockAggregatorDecimals;
             const ethUsdcMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
@@ -118,6 +126,11 @@ describe("Fund Functionalities", function ()
     {
         it("Should set the setter fields correctly", async function ()
         {
+            // console.log(network.network.config.chainId);
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
             const { fundController } = await loadFixture(contractDeploymentFixture);
 
             // set the new epoch time to two days
@@ -141,6 +154,10 @@ describe("Fund Functionalities", function ()
         })
         it("Should mint the fund token correctly: single token", async function ()
         {
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
             const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
             
             const AmountToSendOwner = 1000n;
@@ -185,6 +202,10 @@ describe("Fund Functionalities", function ()
     {
         it("Should add an asset to the fund token", async function ()
         {
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
             const { fundToken, fundController, usdcMock, usdcMockAggregator } = await loadFixture(contractDeploymentFixture);
 
             const wethMockTotalSupply = 1000000000n;

@@ -406,15 +406,22 @@ describe("Fund Functionalities", function ()
             // const fundTokenSigner = await hre.ethers.getImpersonatedSigner(await fundToken.getAddress());
             // await usdc.connect(fundTokenSigner).approve(uniswapRouterAddress_BASE, 1000000000000n);
 
+            const amountOfUSDCBeforeSwap = await usdc.balanceOf(fundToken.getAddress());
             const amountOfUSDCToSwap = amountToSpend - 150n;
-            console.log(amountOfUSDCToSwap * 10n ** await usdc.decimals());
 
-            console.log("Fund Token USDC balance: ", await usdc.balanceOf(fundToken.getAddress()));
             await fundController.swapAsset(usdcAddress_BASE, cbBTCaddress_BASE,
                                            amountOfUSDCToSwap * 10n ** await usdc.decimals());
 
-            console.log("Fund Token USDC balance: ", await usdc.balanceOf(fundToken.getAddress()));
-            console.log("Fund Token cbBTC balance: ", await cbBTC.balanceOf(fundToken.getAddress()));
+            // check that the fund token spent the usdc
+            expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(
+                amountOfUSDCBeforeSwap - amountOfUSDCToSwap * 10n ** await usdc.decimals());
+
+            // check that the fund token received the cbBTC
+            // TODO: have a better way to test this, here we should 
+            // receive 1 cbBTC for 100,000 usdc because of the block we
+            // are forking at, if we change the block number and the price
+            // falls, this test will fail
+            expect(await cbBTC.balanceOf(fundToken.getAddress())).to.be.greaterThan(1n ** 10n ** await cbBTC.decimals());
 
         })
     })

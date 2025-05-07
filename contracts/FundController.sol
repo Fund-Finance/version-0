@@ -11,12 +11,25 @@ import "./interfaces/ISwapRouterExtended.sol";
 
 import "hardhat/console.sol";
 
+struct Proposal
+{
+    uint256 id;
+    address proposer;
+    address assetToTrade;
+    address assetToReceive;
+    uint256 amountIn;
+}
+
 contract FundController is Ownable
 {
     uint256 public s_epochTime;
     uint256 public s_proposalPercentageReward;
     uint256 public s_governorPercentrageReward;
     uint256 public s_minToMint;
+
+    Proposal[] public s_activeProposals;
+    Proposal[] public s_acceptedProposals;
+    uint256 latestProposalId;
 
     IERC20Extended private s_IUSDC;
     IFundToken private s_IFundToken;
@@ -34,6 +47,8 @@ contract FundController is Ownable
         s_governorPercentrageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
         swapRouter = ISwapRouterExtended(swapRounterAddress);
+
+        latestProposalId = 0;
 
     }
 
@@ -91,10 +106,53 @@ contract FundController is Ownable
         s_IFundToken.addAsset(_assetAddress, _aggregatorAddress);
     }
 
+    // TODO: Remove this function, a swap should only happen through a proposal
     function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
         returns (uint256 amountOut)
     {
         amountOut = s_IFundToken.swapAsset(_assetToTrade, _assetToGet, _amountIn);
+        return amountOut;
+    }
+
+    function createProposal(address _assetToTrade, address _assetToReceive, uint256 _amountIn) external
+    {
+        s_activeProposals.push(Proposal(
+            latestProposalId,
+            msg.sender,
+            _assetToTrade,
+            _assetToReceive,
+            _amountIn));
+
+        latestProposalId++;
+    }
+
+    function getActiveProposals() external view returns(Proposal[] memory)
+    {
+        return s_activeProposals;
+    }
+
+    function acceptProposal(uint256 proposalIdToAccept) external onlyOwner
+        returns (uint256 amountOut)
+    {
+        Proposal memory proposalToAccept;
+        uint256 i = 0;
+        for (i = 0; i < s_activeProposals.length; i++)
+        {
+            if (s_activeProposals[i].id == proposalIdToAccept)
+            {
+                proposalToAccept = s_activeProposals[i];
+                break;
+            }
+        }
+
+        amountOut = s_IFundToken.swapAsset(
+            proposalToAccept.assetToTrade,
+            proposalToAccept.assetToReceive,
+            proposalToAccept.amountIn);
+
+        delete s_activeProposals[i];
+        s_acceptedProposals.push(proposalToAccept);
+        
         return amountOut;
     }
 }

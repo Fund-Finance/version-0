@@ -17,7 +17,7 @@
 
 ### For integration tests:
 **NOTE:** You need to have an alchemy account in order to fork the base mainnet and run the integration tests
-1) Create an [alchemy account](alchemy.com) to get your URL and API key for the base mainnet. **Do not share this information with anyone else**
+1) Create an [alchemy account](https://alchemy.com) to get your URL and API key for the base mainnet. **Do not share this information with anyone else**
 2) populate the data in the `.env_incomplete` file
 3) Rename the `.env_incomplete` file to `.env`
 4) run `source .env`

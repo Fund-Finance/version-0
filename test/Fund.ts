@@ -12,8 +12,24 @@ usdcAggregatorMockConstants, ethAggregatorMockConstants,
 wethAggregatorMockConstants, cbBTCAggregatorMockConstants,
 fundControllerConstants} from "./utils/constants";
 
+require("dotenv").config();
+
 describe("Fund Functionalities", function ()
 {
+    async function resetForkedNetwork()
+    {
+        await hre.network.provider.request({
+            method: "hardhat_reset",
+            params: [
+            {
+                forking: {
+                    jsonRpcUrl: process.env.ALCHEMY_URL + process.env.ALCHEMY_API_KEY,
+                    blockNumber: Number(process.env.BASE_MAINNET_BLOCK_TO_FORK),
+                },
+              },
+            ],
+          });
+    }
     async function contractDeploymentFixture()
     {
         const [owner] = await hre.ethers.getSigners();
@@ -300,6 +316,7 @@ describe("Fund Functionalities", function ()
             {
                 this.skip();
             }
+            await resetForkedNetwork();
             // this mine(1) needs to be here, as a result of an odd bug with hardhat
             await mine(1);
             const { owner, fundToken, fundController } = await loadFixture(contractDeploymentForkedFixture);

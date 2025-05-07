@@ -346,8 +346,7 @@ describe("Fund Functionalities", function ()
             await fundController.connect(addr2).createProposal(await usdc.getAddress(), await cbBTC.getAddress(), amountToSpendProposal2 * 10n ** await usdc.decimals());
 
             // check that the proposals were created correctly
-            const proposals = await fundController.getActiveProposals();
-            // console.log(proposals);
+            let proposals = await fundController.getActiveProposals();
 
             expect(proposals.length).to.equal(2);
             expect(proposals[0].id).to.equal(1);
@@ -369,21 +368,29 @@ describe("Fund Functionalities", function ()
             const amountOfUSDCBeforeSwap = amountToSpend * 10n ** await usdc.decimals();
             expect(await wETH.balanceOf(fundToken.getAddress())).to.equal(0n);
 
-            console.log("USDC Amount before swap:", await usdc.balanceOf(fundToken.getAddress()));
-            console.log("wETH Amount before swap:", await wETH.balanceOf(fundToken.getAddress()));
-
             await fundController.connect(owner).acceptProposal(1);
-            const nowproposals = await fundController.getActiveProposals();
-            // console.log(nowproposals);
 
-            console.log("USDC Amount after swap:", await usdc.balanceOf(fundToken.getAddress()));
-            console.log("wETH Amount after swap:", await wETH.balanceOf(fundToken.getAddress()));
-
+            // check if the proposal went through
             expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(
                 amountOfUSDCBeforeSwap - amountToSpendProposal1 * 10n ** await usdc.decimals());
 
             expect(await wETH.balanceOf(fundToken.getAddress())).to.be.greaterThan(1n ** 10n ** await wETH.decimals());
-            console.log(await wETH.balanceOf(fundToken.getAddress()));
+
+            // test adding another proposal after one was accepted
+            const amountOfWETHToSpendOnProposal_RAW = BigInt(
+                0.2 * 10 ** Number(await wETH.decimals()));
+            await fundController.connect(addr1).createProposal(await wETH.getAddress(), await usdc.getAddress(), amountOfWETHToSpendOnProposal_RAW);
+
+            proposals = await fundController.getActiveProposals();
+            expect(proposals.length).to.equal(3);
+            expect(proposals[2].id).to.equal(3);
+            expect(proposals[2].proposer).to.equal(await addr1.getAddress());
+            expect(proposals[2].assetToTrade).to.equal(await wETH.getAddress());
+            expect(proposals[2].assetToReceive).to.equal(await usdc.getAddress());
+            expect(proposals[2].amountIn).to.equal(
+                amountOfWETHToSpendOnProposal_RAW);
+
+            console.log(proposals);
 
         })
     })

@@ -47,7 +47,7 @@ contract FundController is Ownable
         s_IUSDC = IERC20Extended(_usdcAddress);
         swapRouter = ISwapRouterExtended(swapRounterAddress);
 
-        latestProposalId = 0;
+        latestProposalId = 1;
 
     }
 

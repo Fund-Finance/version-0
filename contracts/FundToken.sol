@@ -4,24 +4,30 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "./interfaces/ISwapRouterExtended.sol";
+import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+
+import "hardhat/console.sol";
 
 struct asset
 {
-    IERC20 tokenInterface;
-    AggregatorV3Interface aggregatorInterface;
+    IERC20 token;
+    AggregatorV3Interface aggregator;
 }
 
 contract FundToken is ERC20, Ownable
 {
     asset[] public s_supportedAssets;
+    ISwapRouterExtended public immutable swapRouter;
 
     // NOTE: Here the owner of the token is the controller
     constructor(address _controllerAddress, address _baseTokenAddress,
-                address _baseTokenAggregatorAddress)
+                address _baseTokenAggregatorAddress, address _swapRouterAddress)
         ERC20("FundToken", "FUND") Ownable(_controllerAddress)
     {
         s_supportedAssets.push(asset(
             IERC20(_baseTokenAddress), AggregatorV3Interface(_baseTokenAggregatorAddress)));
+        swapRouter = ISwapRouterExtended(_swapRouterAddress);
     }
 
     function mint(address _to, uint256 _amount) external onlyOwner
@@ -48,11 +54,42 @@ contract FundToken is ERC20, Ownable
              int256 answer,
             ,
             ,
-            ) = s_supportedAssets[i].aggregatorInterface.latestRoundData();
-            totalValue += uint256(answer) * s_supportedAssets[i].tokenInterface.balanceOf(address(this));
+            ) = s_supportedAssets[i].aggregator.latestRoundData();
+            totalValue += uint256(answer) * s_supportedAssets[i].token.balanceOf(address(this));
 
         }
         return totalValue;
     }
 
+    function getAssets() external view returns (asset[] memory)
+    {
+        return s_supportedAssets;
+    }
+
+    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
+        returns (uint256 amountOut)
+    {
+        console.log("About to safe approve");
+        TransferHelper.safeApprove(_assetToTrade, address(swapRouter), _amountIn); 
+        console.log("save approve done");
+
+        console.log(swapRouter.factory());
+
+        ISwapRouterExtended.ExactInputSingleUpdatedParams memory params =
+            ISwapRouterExtended.ExactInputSingleUpdatedParams({
+                tokenIn: _assetToTrade,
+                tokenOut: _assetToGet,
+                fee: 3000,
+                recipient: address(this),
+                // deadline: block.timestamp,
+                amountIn: _amountIn,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+        console.log("setting params done");
+        amountOut = swapRouter.exactInputSingle(params);
+        console.log("swapping done");
+
+        return amountOut;
+    }
 }

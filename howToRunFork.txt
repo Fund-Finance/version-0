@@ -1,0 +1,1 @@
+npx hardhat node --fork "${ALCHEMY_URL}${ALCHEMY_API_KEY}" --fork-block-number ${BASE_MAINNET_BLOCK_TO_FORK}

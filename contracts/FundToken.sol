@@ -75,8 +75,8 @@ contract FundToken is ERC20, Ownable
 
         console.log(swapRouter.factory());
 
-        ISwapRouter.ExactInputSingleParams memory params =
-            ISwapRouter.ExactInputSingleParams({
+        ISwapRouterExtended.ExactInputSingleUpdatedParams memory params =
+            ISwapRouterExtended.ExactInputSingleUpdatedParams({
                 tokenIn: _assetToTrade,
                 tokenOut: _assetToGet,
                 fee: 3000,

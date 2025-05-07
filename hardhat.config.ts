@@ -13,15 +13,15 @@ const config: HardhatUserConfig = {
         gasPrice: 0,
         initialBaseFeePerGas: 0,
     },
-    base_mainnet:
-    {
+    // base_mainnet:
+    // {
       // Should be changed when doing real testing
       // but for now assume gas prices are 0
-      gasPrice: 0,
-      initialBaseFeePerGas: 0,
-      url: `${process.env.ALCHEMY_URL}/${process.env.ALCHEMY_API_KEY}`,
-      accounts: [`${process.env.BASE_MAINNET_PRIVATE_KEY}`],
-    },
+    //   gasPrice: 0,
+    //   initialBaseFeePerGas: 0,
+    //   url: `${process.env.ALCHEMY_URL}/${process.env.ALCHEMY_API_KEY}`,
+    //   accounts: [`${process.env.BASE_MAINNET_PRIVATE_KEY}`],
+    // },
     localhost:
     {
         // Should be changed when doing real testing

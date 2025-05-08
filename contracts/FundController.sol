@@ -252,6 +252,7 @@ contract FundController is Ownable
 
     function getActiveProposals() external view returns(Proposal[] memory activeProposals)
     {
+        activeProposals = new Proposal[](s_activeProposalIds.length);
         for(uint256 i = 0; i < s_activeProposalIds.length; i++)
         {
             activeProposals[i] = proposals[s_activeProposalIds[i]];

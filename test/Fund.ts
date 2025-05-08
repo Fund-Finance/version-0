@@ -88,6 +88,8 @@ describe("Fund Functionalities", function ()
 
     async function contractDeploymentForkedFixture()
     {
+        await resetForkedNetwork();
+        await mine(1);
         const [owner, addr1, addr2] = await hre.ethers.getSigners();
 
         const fundController = await hre.ethers.deployContract("FundController",
@@ -289,14 +291,14 @@ describe("Fund Functionalities", function ()
         })
         it("Should make a trade by the owner accepting a proposal submitted by a user", async function ()
         {
+            // await resetForkedNetwork();
             const latestBlock = await hre.ethers.provider.getBlock("latest");
             if(network.network.name !== "localhost" || latestBlock.number < 20000)
             {
                 this.skip();
             }
-            await resetForkedNetwork();
             // this mine(1) needs to be here, as a result of an odd bug with hardhat
-            await mine(1);
+            // await mine(1);
 
             const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
 
@@ -447,14 +449,14 @@ describe("Fund Functionalities", function ()
         })
         it("Should preform a swap correctly", async function ()
         {
+            // await resetForkedNetwork();
+            // this mine(1) needs to be here, as a result of an odd bug with hardhat
+            // await mine(1);
             const latestBlock = await hre.ethers.provider.getBlock("latest");
             if(network.network.name !== "localhost" || latestBlock.number < 20000)
             {
                 this.skip();
             }
-            await resetForkedNetwork();
-            // this mine(1) needs to be here, as a result of an odd bug with hardhat
-            await mine(1);
             const { owner, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
 
             // now mint the fund token

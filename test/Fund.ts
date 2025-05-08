@@ -485,6 +485,7 @@ describe("Fund Functionalities", function ()
             const amountOfWETHToSpendOnProposal_RAW = BigInt(
                 0.2 * 10 ** Number(await wETH.decimals()));
             createProposal(fundController, await wETH.getAddress(), await usdc.getAddress(),
+            await createProposal(fundController, await wETH.getAddress(), await usdc.getAddress(),
                 amountOfWETHToSpendOnProposal_RAW, addr1);
         })
     })

@@ -69,9 +69,7 @@ contract FundToken is ERC20, Ownable
     function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
         returns (uint256 amountOut)
     {
-        console.log("About to safe approve");
         TransferHelper.safeApprove(_assetToTrade, address(swapRouter), _amountIn); 
-        console.log("save approve done");
 
         console.log(swapRouter.factory());
 
@@ -86,9 +84,7 @@ contract FundToken is ERC20, Ownable
                 amountOutMinimum: 0,
                 sqrtPriceLimitX96: 0
             });
-        console.log("setting params done");
         amountOut = swapRouter.exactInputSingle(params);
-        console.log("swapping done");
 
         return amountOut;
     }

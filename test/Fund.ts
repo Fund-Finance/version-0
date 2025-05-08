@@ -287,7 +287,7 @@ describe("Fund Functionalities", function ()
             expect(await usdcMock.balanceOf(fundToken.getAddress())).to.equal(AmountToSendOwner * 10n ** await usdcMock.decimals());
 
         })
-        it.only("Should make a trade by the owner accepting a proposal submitted by a user", async function ()
+        it("Should make a trade by the owner accepting a proposal submitted by a user", async function ()
         {
             const latestBlock = await hre.ethers.provider.getBlock("latest");
             if(network.network.name !== "localhost" || latestBlock.number < 20000)
@@ -389,9 +389,6 @@ describe("Fund Functionalities", function ()
             expect(proposals[2].assetToReceive).to.equal(await usdc.getAddress());
             expect(proposals[2].amountIn).to.equal(
                 amountOfWETHToSpendOnProposal_RAW);
-
-            console.log(proposals);
-
         })
     })
     describe("Fund Token", function ()

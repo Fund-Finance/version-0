@@ -334,8 +334,6 @@ describe("Fund Functionalities", function ()
         const amountOfBaseAssetBeforeSwap = await assetToTrade.balanceOf(await fundToken.getAddress());
         const amountOfQuoteAssetBeforeSwap = await assetToReceive.balanceOf(await fundController.getAddress());
 
-        console.log("Amount of USDC in the fund before swap:" + await assetToTrade.balanceOf(await fundToken.getAddress()));
-
         await fundController.connect(owner).acceptProposal(proposalId);
 
         // check if the proposal went through

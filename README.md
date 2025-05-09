@@ -55,4 +55,5 @@
 - Added EPOCH logic to the Fund Controller
     - Added just-in-time update logic to determine the total supply of fToken at the end of an EPOCH
     - Added logic to payout successful proposers and active governors
+        - **NOTE:** for now payouts are calculated using the total number of fToken at the end of an EPOCH
     - Added a few basic test cases to test the EPOCH logic and payout system

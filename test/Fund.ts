@@ -22,6 +22,7 @@ require("dotenv").config();
 // eth price: ~$1800
 // cbBTC price: ~$95,000
 
+const epsilon = BigInt(1);
 describe("Fund Functionalities", function ()
 {
     async function resetForkedNetwork()
@@ -486,7 +487,7 @@ describe("Fund Functionalities", function ()
             await createProposal(fundController, await wETH.getAddress(), await usdc.getAddress(),
                 amountOfWETHToSpendOnProposal_RAW, addr1);
         })
-        it.only("Should payout the proposer and the governor correctly", async function ()
+        it("Should payout the proposer and the governor correctly: single proposer and single governor", async function ()
         {
             const latestBlock = await hre.ethers.provider.getBlock("latest");
             if(network.network.name !== "localhost" || latestBlock.number < 20000)
@@ -510,8 +511,201 @@ describe("Fund Functionalities", function ()
 
             await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
 
+            const fTokenTotalSupplyBeforePayout = await fundToken.totalSupply();
+            const governorBalanceBeforePayout = await fundToken.balanceOf(owner.getAddress());
+            const proposerBalanceBeforePayout = await fundToken.balanceOf(addr1.getAddress());
+            // check the fToken balance of addr1
+            expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(proposerBalanceBeforePayout);
+            expect(await fundToken.balanceOf(owner.getAddress())).to.equal(governorBalanceBeforePayout);
+            await fundController.payoutProposers();
+            expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(proposerBalanceBeforePayout);
+            expect(await fundToken.balanceOf(owner.getAddress())).to.equal(governorBalanceBeforePayout);
+            await time.increase(miscConstants.ONE_DAY);
+            await fundController.payoutProposers();
+            await fundController.payoutGovernors();
+
+            expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(
+                (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers) +
+                    proposerBalanceBeforePayout);
+
+            expect(await fundToken.balanceOf(owner.getAddress())).to.equal(
+                (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors) +
+                    governorBalanceBeforePayout);
 
         })
+
+        it("Should payout the proposer and the governor correctly: multiple proposers and multiple governors", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+            const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+            const amountToSpend = 100_000n;
+            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+
+            // now add the wETH and cbBTC to the fund token
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
+            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
+
+            // now we can make proposals to be accepted
+            const amountToSpendProposal1 = 2_001n;
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
+                amountToSpendProposal1 * 10n ** await usdc.decimals(), addr1);
+            const amountToSpendProposal2 = 10_000n;
+            await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
+                amountToSpendProposal2 * 10n ** await usdc.decimals(), addr2);
+            const amountToSpendProposal3 = 10_000n;
+            await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
+                amountToSpendProposal3 * 10n ** await usdc.decimals(), addr1);
+
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+            await acceptProposal(2n, fundController, fundToken, owner, usdc, cbBTC);
+            await acceptProposal(3n, fundController, fundToken, owner, usdc, cbBTC);
+
+            const fTokenTotalSupplyBeforePayout = await fundToken.totalSupply();
+            const governorBalanceBeforePayout = await fundToken.balanceOf(owner.getAddress());
+            const proposer1BalanceBeforePayout = await fundToken.balanceOf(addr1.getAddress());
+            const proposer2BalanceBeforePayout = await fundToken.balanceOf(addr2.getAddress());
+
+            await fundController.payoutProposers();
+            await fundController.payoutGovernors();
+
+            expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(
+                proposer1BalanceBeforePayout);
+            expect(await fundToken.balanceOf(addr2.getAddress())).to.equal(
+                proposer2BalanceBeforePayout);
+            expect(await fundToken.balanceOf(owner.getAddress())).to.equal(
+                governorBalanceBeforePayout);
+
+            await time.increase(miscConstants.ONE_DAY);
+            await fundController.payoutProposers();
+            await fundController.payoutGovernors();
+
+            const totalAcceptedThisEpoch = 3n;
+            const proposer1NumAccepted = 2n;
+            const proposer2NumAccepted = 1n;
+            const governorNumAccepted = 3n;
+
+            // the reward = (totalSupply / percentageFee) * (numYourAcceptedProposals / totalAcceptedProposals)
+            // The equation was re-written slightly to avoid rounding errors
+            expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo
+            ((fTokenTotalSupplyBeforePayout * proposer1NumAccepted)
+             / (fundControllerConstants.initialPercentageFeeProposers * totalAcceptedThisEpoch)
+             + proposer1BalanceBeforePayout, epsilon);
+
+            expect(await fundToken.balanceOf(addr2.getAddress())).to.be.closeTo
+            ((fTokenTotalSupplyBeforePayout * proposer2NumAccepted)
+             / (fundControllerConstants.initialPercentageFeeProposers * totalAcceptedThisEpoch)
+             + proposer2BalanceBeforePayout, epsilon);
+
+            expect(await fundToken.balanceOf(owner.getAddress())).to.closeTo
+            ((fTokenTotalSupplyBeforePayout * governorNumAccepted)
+             / (fundControllerConstants.initialPercentageFeeGovernors * totalAcceptedThisEpoch)
+             + governorBalanceBeforePayout, epsilon);
+
+        })
+        it("Should payout the proposer and governor correctly: multiple epochs have passed", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+            const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+            const amountToSpend = 100_000n;
+            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+
+            // now add the wETH and cbBTC to the fund token
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
+            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
+
+            const fTokenTotalSupplyBeforePayout = await fundToken.totalSupply();
+            const governorBalanceBeforePayout = await fundToken.balanceOf(owner.getAddress());
+            const proposer1BalanceBeforePayout = await fundToken.balanceOf(addr1.getAddress());
+            const proposer2BalanceBeforePayout = await fundToken.balanceOf(addr2.getAddress());
+            // now we can make proposals to be accepted
+            const amountToSpendProposal1 = 2_001n;
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
+                amountToSpendProposal1 * 10n ** await usdc.decimals(), addr1);
+            const amountToSpendProposal2 = 10_000n;
+            await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
+                amountToSpendProposal2 * 10n ** await usdc.decimals(), addr2);
+
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+            await acceptProposal(2n, fundController, fundToken, owner, usdc, cbBTC);
+
+            await time.increase(miscConstants.ONE_DAY * 2n);
+
+            const amountToSpendProposal3 = 10_000n;
+            await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
+                amountToSpendProposal3 * 10n ** await usdc.decimals(), addr1);
+
+            await acceptProposal(3n, fundController, fundToken, owner, usdc, cbBTC);
+
+            await time.increase(miscConstants.ONE_DAY * 2n);
+
+            await fundController.payoutProposers();
+            await fundController.payoutGovernors();
+
+            const totalAcceptedFirstEpoch = 2n;
+            const proposer1NumAcceptedFirstEpoch = 1n;
+            const proposer2NumAcceptedFirstEpoch = 1n;
+            const governorNumAcceptedFirstEpoch = 2n;
+
+            const totalAcceptedSecondEpoch = 1n;
+            const proposer1NumAcceptedSecondEpoch = 1n;
+            const proposer2NumAcceptedSecondEpoch = 0n;
+            const governorNumAcceptedSecondEpoch = 1n;
+
+            // the total rewards issued to the proposers during the first epoch
+            const totalRewardIssuedFirstEpochToProposers = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers);
+            // the total rewards issued to the governors during the first epoch
+            const totalRewardIssuedFirstEpochToGovernors = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors);
+
+            // the total rewards issued to both the proposers and the governors
+            const totalRewardIssuedFirstEpoch = totalRewardIssuedFirstEpochToProposers + totalRewardIssuedFirstEpochToGovernors;
+
+            // the total supply after the first epoch = initial supply + the total rewards issued during epoch
+            const fTokenTotalSupplyAfterFirstEpoch = fTokenTotalSupplyBeforePayout + totalRewardIssuedFirstEpoch;
+
+            // the total rewards issued to the proposers during the second epoch
+            const totalRewardIssuedSecondEpochToProposers = (fTokenTotalSupplyAfterFirstEpoch / fundControllerConstants.initialPercentageFeeProposers);
+
+            // the total rewards issued to the governors during the second epoch
+            const totalRewardIssuedSecondEpochToGovernors = (fTokenTotalSupplyAfterFirstEpoch / fundControllerConstants.initialPercentageFeeGovernors);
+
+            // the total rewards issued to both the proposers and the governors
+            const totalRewardIssuedSecondEpoch = totalRewardIssuedSecondEpochToProposers + totalRewardIssuedSecondEpochToGovernors;
+
+            // the total supply after the second epoch = totalSupplyAfterFirstEpoch + the total rewards issued during this epoch
+            const fTokenTotalSupplyAfterSecondEpoch = fTokenTotalSupplyAfterFirstEpoch + totalRewardIssuedSecondEpoch;
+
+            // the reward for the proposer = (totalRewardIssuedToPropers1stEpoch *
+            // numYourAcceptedProposals1stEpoch / totalAcceptedProposals1stEpoch) + (totalRewardIssuedToPropers2ndEpoch *
+            // numYourAcceptedProposals2ndEpoch / totalAcceptedProposals2ndEpoch)
+            const proposer1Reward = ((totalRewardIssuedFirstEpochToProposers * proposer1NumAcceptedFirstEpoch)
+                                     / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToProposers *
+                                        proposer1NumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
+
+            const proposer2Reward = ((totalRewardIssuedFirstEpochToProposers * proposer2NumAcceptedFirstEpoch)
+                                     / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToProposers *
+                                        proposer2NumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
+
+            const governorReward = ((totalRewardIssuedFirstEpochToGovernors * governorNumAcceptedFirstEpoch)
+                                    / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToGovernors *
+                                        governorNumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
+
+            expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo(
+                proposer1BalanceBeforePayout + proposer1Reward, epsilon);
+            expect(await fundToken.balanceOf(addr2.getAddress())).to.be.closeTo(
+                proposer2BalanceBeforePayout + proposer2Reward, epsilon);
+
+            expect(await fundToken.balanceOf(owner.getAddress())).to.be.closeTo(
+                governorBalanceBeforePayout + governorReward, epsilon);
+        })
+
     })
     describe("Fund Token", function ()
     {
@@ -542,8 +736,6 @@ describe("Fund Functionalities", function ()
                 this.skip();
             }
             const { owner, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
-
-
 
             // now mint the fund token
             const amountToSpend = 100000n;

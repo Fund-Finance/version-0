@@ -449,7 +449,7 @@ describe("Fund Functionalities", function ()
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner); 
 
         })
-        it.only("Should burn and redeem assets correctly: single token", async function ()
+        it("Should burn and redeem assets correctly: single token", async function ()
         {
             if (network.network.name !== "hardhat")
             {

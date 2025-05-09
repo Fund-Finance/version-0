@@ -128,6 +128,8 @@ interface FundControllerConstants
 export const fundControllerConstants: FundControllerConstants =
 {
     initialEpochTime: miscConstants.ONE_DAY,
-    initialPercentageFeeProposers: 1n,
-    initialPercentageFeeGovernors: 1n,
+    // NOTE: These fee values are reciprical!
+    // 1% fee = 1/0.01 = 100
+    initialPercentageFeeProposers: 100n,
+    initialPercentageFeeGovernors: 100n,
 }

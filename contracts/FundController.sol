@@ -17,17 +17,59 @@ struct Proposal
     address assetToTrade;
     address assetToReceive;
     uint256 amountIn;
+    uint256 epochDeadline;
+}
+
+struct SuccessfulProposer
+{
+    address proposer;
+    Proposal[] acceptedProposals;
+    // a mapping in which you put in the epoch
+    // deadline and you get the number of proposals
+    // that this user got accepted
+    mapping(uint256 => uint256) proposalPerEpochDeadline;
+}
+
+struct ActiveGovernor
+{
+    address governor;
+    // the proposals that the governor voted on
+    Proposal[] votedProposals;
+
+    // a mapping to see how many proposals the governor voted 
+    // on in a given epoch
+    mapping(uint256 => uint256) participationPerEpochDeadline;
 }
 
 contract FundController is Ownable
 {
     uint256 public s_epochTime;
+    uint256 public s_epochExpirationTime;
+
+    // NOTE: These percentage values are reciprical
+    // meaning 1% would be 1/0.01 = 100
     uint256 public s_proposalPercentageReward;
     uint256 public s_governorPercentrageReward;
+
+
     uint256 public s_minToMint;
 
-    Proposal[] public s_activeProposals;
-    Proposal[] public s_acceptedProposals;
+    uint256[] public s_activeProposalIds;
+    // mapping of epoch deadline to the number of acceptedProposals
+    mapping(uint256 => uint256) public totalAcceptedProposalsPerEpoch;
+    // mapping of proposalId to the the proposal
+    mapping(uint256 => Proposal) public proposals;
+
+    // mapping of the EPOCH deadline to the number of fund tokens
+    mapping(uint256 => uint256) public totalFundTokenSupplyPerEpoch;
+    
+    mapping(address => SuccessfulProposer) public successfulProposers;
+    address[] public successfulProposersList;
+
+    // mapping of the epoch deadline to the governors that are active
+    mapping(address => ActiveGovernor) public activeGovernors;
+    address[] public participatingGovernorsList;
+
     uint256 latestProposalId;
 
     IERC20Extended private s_IUSDC;
@@ -46,15 +88,14 @@ contract FundController is Ownable
         s_governorPercentrageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
         swapRouter = ISwapRouterExtended(swapRounterAddress);
-
-        latestProposalId = 1;
-
     }
 
     function initialize(address _fundTokenAddress) external
     {
         s_IFundToken = IFundToken(_fundTokenAddress);
         s_minToMint = 2 * 10 ** s_IFundToken.decimals();
+        latestProposalId = 1;
+        s_epochExpirationTime = block.timestamp + s_epochTime;
     }
 
     // setter functions for how the protocol opperates
@@ -98,6 +139,108 @@ contract FundController is Ownable
         s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawAmount);
 
         s_IFundToken.mint(msg.sender, amountToMint);
+
+        if(getNextEpochDeadline())
+        {
+            payoutProposers();
+            payoutGovernors();
+            // if there is a new epoch set the to the total supply of the fund
+            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
+        }
+        totalFundTokenSupplyPerEpoch[s_epochExpirationTime] += amountToMint;
+    }
+
+    function redeemAssets(uint256 _rawFTokenToRedeem) public
+    {
+        // redeem the assets first
+
+        if(getNextEpochDeadline())
+        {
+            payoutProposers();
+            payoutGovernors();
+            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
+        }
+        totalFundTokenSupplyPerEpoch[s_epochExpirationTime] -= _rawFTokenToRedeem;
+
+    }
+
+    function payoutProposers() public
+    {
+        // iterate over all of the successful proposers
+        for(uint256 i = 0; i < successfulProposersList.length; i++)
+        {
+            // for each of them get their accepted proposals
+            uint256 totalRewardForProposer = 0;
+            SuccessfulProposer storage proposer = successfulProposers[successfulProposersList[i]];
+            Proposal[] memory proposersAcceptedProposals = proposer.acceptedProposals;
+            // iterate over the accepted proposals and calculate the reward
+            for(uint256 j = 0; j < proposersAcceptedProposals.length; j++)
+            {
+                Proposal memory proposal = proposersAcceptedProposals[j];
+                // skip accepted proposals that are still in this epoch
+                if (proposal.epochDeadline > block.timestamp || proposal.epochDeadline == 0)
+                {
+                    continue;
+                }
+                uint256 totalAccepted = totalAcceptedProposalsPerEpoch[proposal.epochDeadline];
+                uint256 fundSizeAtEpoch = totalFundTokenSupplyPerEpoch[proposal.epochDeadline];
+                uint256 rewardForProposal = (fundSizeAtEpoch / (s_proposalPercentageReward * totalAccepted));
+                totalRewardForProposer += rewardForProposal;
+                delete proposer.acceptedProposals[j];
+            }
+            // remove a successful proposer if all of his/her
+            // accepted proposals have been paid out
+            if (proposer.acceptedProposals.length == 0)
+            {
+                delete successfulProposers[successfulProposersList[i]];
+                delete successfulProposersList[i];
+            }
+            // delete successfulProposers[successfulProposersList[i]];
+            s_IFundToken.mint(proposer.proposer, totalRewardForProposer);
+        }
+        if (successfulProposersList.length == 0)
+        {
+            delete successfulProposersList;
+        }
+        
+    }
+
+    function payoutGovernors() public
+    {
+        for (uint256 i = 0; i < participatingGovernorsList.length; i++)
+        {
+            uint256 totalRewardForGovernor = 0;
+            ActiveGovernor storage governor = activeGovernors[participatingGovernorsList[i]];
+            Proposal[] memory governorsVotedProposals = governor.votedProposals;
+            for (uint256 j = 0; j < governorsVotedProposals.length; j++)
+            {
+                Proposal memory proposal = governorsVotedProposals[j];
+                // for now the governors will only be rewarded for the proposals they voted on
+                // in the future they can be reward for doing other governance actions
+                // if we decide to do so
+                if (proposal.epochDeadline > block.timestamp || proposal.epochDeadline == 0)
+                {
+                    continue;
+                }
+                uint256 totalAccepted = totalAcceptedProposalsPerEpoch[proposal.epochDeadline];
+                uint256 fundSizeAtEpoch = totalFundTokenSupplyPerEpoch[proposal.epochDeadline];
+                uint256 rewardForGovernor = (fundSizeAtEpoch / (s_governorPercentrageReward * totalAccepted));
+                totalRewardForGovernor += rewardForGovernor;
+                delete governor.votedProposals[j];
+            }
+            // remove a governor if all of his/her
+            // accepted proposals have been paid out
+            if (governor.votedProposals.length == 0)
+            {
+                delete activeGovernors[participatingGovernorsList[i]];
+                delete participatingGovernorsList[i];
+            }
+            s_IFundToken.mint(governor.governor, totalRewardForGovernor);
+        }
+        if (participatingGovernorsList.length == 0)
+        {
+            delete participatingGovernorsList;
+        }
     }
 
     function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
@@ -113,45 +256,119 @@ contract FundController is Ownable
         return amountOut;
     }
 
+    function getNextEpochDeadline() public returns (bool newEpoch)
+    {
+        newEpoch = block.timestamp > s_epochExpirationTime;
+        while (block.timestamp > s_epochExpirationTime)
+        {
+            s_epochExpirationTime += s_epochTime;
+        }
+        return newEpoch;
+    }
+
     function createProposal(address _assetToTrade, address _assetToReceive, uint256 _amountIn) external
     {
-        s_activeProposals.push(Proposal(
+        Proposal memory proposalToCreate = Proposal(
             latestProposalId,
             msg.sender,
             _assetToTrade,
             _assetToReceive,
-            _amountIn));
-
+            _amountIn,
+            0);
+        proposals[latestProposalId] = proposalToCreate;
+        s_activeProposalIds.push(latestProposalId);
         latestProposalId++;
     }
 
-    function getActiveProposals() external view returns(Proposal[] memory)
+    function getActiveProposals() external view returns(Proposal[] memory activeProposals)
     {
-        return s_activeProposals;
+        activeProposals = new Proposal[](s_activeProposalIds.length);
+        for(uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            activeProposals[i] = proposals[s_activeProposalIds[i]];
+        }
+        return activeProposals;
+    }
+
+    function checkParticipatingGovernor(address _governor) public view returns (bool isParticipating)
+    {
+        for(uint256 i = 0; i < participatingGovernorsList.length; i++)
+        {
+            if(participatingGovernorsList[i] == _governor)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function checkIsSuccessfulProposer(address _proposer) public view returns (bool isSuccessful)
+    {
+        for(uint256 i = 0; i < successfulProposersList.length; i++)
+        {
+            if(successfulProposersList[i] == _proposer)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     function acceptProposal(uint256 proposalIdToAccept) external onlyOwner
         returns (uint256 amountOut)
     {
-        Proposal memory proposalToAccept;
-        uint256 i = 0;
-        for (i = 0; i < s_activeProposals.length; i++)
-        {
-            if (s_activeProposals[i].id == proposalIdToAccept)
-            {
-                proposalToAccept = s_activeProposals[i];
-                break;
-            }
-        }
-
+        Proposal memory proposalToAccept = proposals[proposalIdToAccept];
         amountOut = s_IFundToken.swapAsset(
             proposalToAccept.assetToTrade,
             proposalToAccept.assetToReceive,
             proposalToAccept.amountIn);
 
-        delete s_activeProposals[i];
-        s_acceptedProposals.push(proposalToAccept);
+        for (uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            if (s_activeProposalIds[i] == proposalIdToAccept)
+            {
+                delete s_activeProposalIds[i];
+                break;
+            }
+        }
+
+        delete proposals[proposalIdToAccept];
+
+        if(getNextEpochDeadline())
+        {
+            payoutProposers();
+            payoutGovernors();
+            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
+        }
+        proposalToAccept.epochDeadline = s_epochExpirationTime;
+
+        // increment the number of accepted proposals for this epoch
+        totalAcceptedProposalsPerEpoch[proposalToAccept.epochDeadline]++;
+
+        successfulProposers[proposalToAccept.proposer].proposer = proposalToAccept.proposer;
+        successfulProposers[proposalToAccept.proposer].acceptedProposals.push(proposalToAccept);
+        successfulProposers[proposalToAccept.proposer].proposalPerEpochDeadline[proposalToAccept.epochDeadline]++;
+
+        if (!checkIsSuccessfulProposer(proposalToAccept.proposer))
+        {
+            successfulProposersList.push(proposalToAccept.proposer);
+        }
+
+        // add the governor to the list of active governors
+        activeGovernors[msg.sender].governor = msg.sender;
+        activeGovernors[msg.sender].votedProposals.push(proposalToAccept);
+        activeGovernors[msg.sender].participationPerEpochDeadline[proposalToAccept.epochDeadline]++;
+
+        if (!checkParticipatingGovernor(msg.sender))
+        {
+            participatingGovernorsList.push(msg.sender);
+        }
         
         return amountOut;
+    }
+
+    function getCurrentBlockTimestamp() external view returns (uint256)
+    {
+        return block.timestamp;
     }
 }

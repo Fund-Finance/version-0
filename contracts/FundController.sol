@@ -288,7 +288,6 @@ contract FundController is Ownable
         returns (uint256 amountOut)
     {
         Proposal memory proposalToAccept = proposals[proposalIdToAccept];
-
         amountOut = s_IFundToken.swapAsset(
             proposalToAccept.assetToTrade,
             proposalToAccept.assetToReceive,

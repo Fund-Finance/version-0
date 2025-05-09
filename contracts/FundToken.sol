@@ -71,8 +71,6 @@ contract FundToken is ERC20, Ownable
     {
         TransferHelper.safeApprove(_assetToTrade, address(swapRouter), _amountIn); 
 
-        console.log(swapRouter.factory());
-
         ISwapRouterExtended.ExactInputSingleUpdatedParams memory params =
             ISwapRouterExtended.ExactInputSingleUpdatedParams({
                 tokenIn: _assetToTrade,

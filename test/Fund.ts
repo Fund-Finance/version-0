@@ -172,7 +172,7 @@ describe("Fund Functionalities", function ()
         // send some tokens to the owner
         const AmountToSendOwner_cbBTC = 2n;
         const AmountToSendOwner_wETH = 5n;
-        const AmountToSendOwner_usdc = 100000000n;
+        const AmountToSendOwner_usdc = 100_000_000n;
         await cbBTC.connect(cbBTCWhaleSigner).transfer(owner.address,
             AmountToSendOwner_cbBTC * 10n ** await cbBTC.decimals());
         await wETH.connect(wETHWhaleSigner).transfer(owner.address,

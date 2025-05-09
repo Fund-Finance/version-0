@@ -449,6 +449,45 @@ describe("Fund Functionalities", function ()
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner); 
 
         })
+        it.only("Should burn and redeem assets correctly: single token", async function ()
+        {
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
+            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
+            const AmountToSendOwner = 1000n;
+            await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner);
+
+            // now we can burn the fund token and redeem the assets
+            const ownerFundTokenAmountBeforeRedeem = await fundToken.balanceOf(await owner.getAddress());
+            const ownerUSDCBeforeRedeem = await usdcMock.balanceOf(await owner.getAddress());
+            const fundTokenUSDCBeforeRedeem = await usdcMock.balanceOf(await fundToken.getAddress());
+            const fundTokenTotalSupplyBeforeRedeem = await fundToken.totalSupply();
+
+            // NOTE: In this simple example, because we are only dealing with one asset
+            // the ratio of fToken to USDC is 1:1
+            // Hence amountToRedeem can be used for both the fund token and the USDC calcualtions
+            const amountToRedeem = 100n;
+            await fundController.connect(owner).redeemAssets(amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the total supply of the fund token has decreased
+            expect(await fundToken.totalSupply()).to.equal(
+                fundTokenTotalSupplyBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the amount of USDC in the fund decreased
+            expect(await usdcMock.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenUSDCBeforeRedeem - amountToRedeem * 10n ** await usdcMock.decimals());
+
+            // check the amount of fund token owned by the owner decreased
+            expect(await fundToken.balanceOf(await owner.getAddress())).to.equal(
+                ownerFundTokenAmountBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check the amount of USDC owned by the owner increased
+            expect(await usdcMock.balanceOf(await owner.getAddress())).to.equal(
+                ownerUSDCBeforeRedeem + amountToRedeem * 10n ** await usdcMock.decimals());
+            
+        })
         it("Should make a trade by the owner accepting a proposal submitted by a user", async function ()
         {
             // await resetForkedNetwork();

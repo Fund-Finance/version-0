@@ -177,15 +177,31 @@ contract FundController is Ownable
             for(uint256 j = 0; j < proposersAcceptedProposals.length; j++)
             {
                 Proposal memory proposal = proposersAcceptedProposals[j];
+                // skip accepted proposals that are still in this epoch
+                if (proposal.epochDeadline > block.timestamp || proposal.epochDeadline == 0)
+                {
+                    continue;
+                }
                 uint256 totalAccepted = totalAcceptedProposalsPerEpoch[proposal.epochDeadline];
                 uint256 fundSizeAtEpoch = totalFundTokenSupplyPerEpoch[proposal.epochDeadline];
                 uint256 rewardForProposal = (fundSizeAtEpoch / (s_proposalPercentageReward * totalAccepted));
                 totalRewardForProposer += rewardForProposal;
+                delete proposer.acceptedProposals[j];
             }
-            delete successfulProposers[successfulProposersList[i]];
+            // remove a successful proposer if all of his/her
+            // accepted proposals have been paid out
+            if (proposer.acceptedProposals.length == 0)
+            {
+                delete successfulProposers[successfulProposersList[i]];
+                delete successfulProposersList[i];
+            }
+            // delete successfulProposers[successfulProposersList[i]];
             s_IFundToken.mint(proposer.proposer, totalRewardForProposer);
         }
-        delete successfulProposersList;
+        if (successfulProposersList.length == 0)
+        {
+            delete successfulProposersList;
+        }
         
     }
 
@@ -202,15 +218,29 @@ contract FundController is Ownable
                 // for now the governors will only be rewarded for the proposals they voted on
                 // in the future they can be reward for doing other governance actions
                 // if we decide to do so
+                if (proposal.epochDeadline > block.timestamp || proposal.epochDeadline == 0)
+                {
+                    continue;
+                }
                 uint256 totalAccepted = totalAcceptedProposalsPerEpoch[proposal.epochDeadline];
                 uint256 fundSizeAtEpoch = totalFundTokenSupplyPerEpoch[proposal.epochDeadline];
                 uint256 rewardForGovernor = (fundSizeAtEpoch / (s_governorPercentrageReward * totalAccepted));
                 totalRewardForGovernor += rewardForGovernor;
+                delete governor.votedProposals[j];
             }
-            delete activeGovernors[participatingGovernorsList[i]];
+            // remove a governor if all of his/her
+            // accepted proposals have been paid out
+            if (governor.votedProposals.length == 0)
+            {
+                delete activeGovernors[participatingGovernorsList[i]];
+                delete participatingGovernorsList[i];
+            }
             s_IFundToken.mint(governor.governor, totalRewardForGovernor);
         }
-        delete participatingGovernorsList;
+        if (participatingGovernorsList.length == 0)
+        {
+            delete participatingGovernorsList;
+        }
     }
 
     function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
@@ -304,7 +334,12 @@ contract FundController is Ownable
 
         delete proposals[proposalIdToAccept];
 
-        getNextEpochDeadline();
+        if(getNextEpochDeadline())
+        {
+            payoutProposers();
+            payoutGovernors();
+            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
+        }
         proposalToAccept.epochDeadline = s_epochExpirationTime;
 
         // increment the number of accepted proposals for this epoch
@@ -330,5 +365,10 @@ contract FundController is Ownable
         }
         
         return amountOut;
+    }
+
+    function getCurrentBlockTimestamp() external view returns (uint256)
+    {
+        return block.timestamp;
     }
 }

@@ -1,10 +1,11 @@
 import {
   loadFixture,
+  mine,
+  time,
 } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import hre from "hardhat";
 import network from "hardhat"
-import { mine } from "@nomicfoundation/hardhat-network-helpers";
 
 import {miscConstants, baseMainnetConstants,
 usdcMockConstants, wethMockConstants, cbBTCMockConstants,
@@ -12,7 +13,7 @@ usdcAggregatorMockConstants, ethAggregatorMockConstants,
 wethAggregatorMockConstants, cbBTCAggregatorMockConstants,
 fundControllerConstants} from "./utils/constants";
 
-import {GenericERC20Mock, FundToken, FundController, IERC20Extended, IERC20Extended__factory} from "../typechain-types/";
+import { GenericERC20Mock, FundToken, FundController, IERC20Extended } from "../typechain-types/";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
 require("dotenv").config();
@@ -411,7 +412,6 @@ describe("Fund Functionalities", function ()
     {
         it("Should set the setter fields correctly", async function ()
         {
-            // console.log(network.network.config.chainId);
             if (network.network.name !== "hardhat")
             {
                 this.skip();
@@ -444,7 +444,6 @@ describe("Fund Functionalities", function ()
                 this.skip();
             }
             const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
-            console.log("About to call the mint function")
             const AmountToSendOwner = 1000n;
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner); 
 
@@ -484,9 +483,34 @@ describe("Fund Functionalities", function ()
             // test adding another proposal after one was accepted
             const amountOfWETHToSpendOnProposal_RAW = BigInt(
                 0.2 * 10 ** Number(await wETH.decimals()));
-            createProposal(fundController, await wETH.getAddress(), await usdc.getAddress(),
             await createProposal(fundController, await wETH.getAddress(), await usdc.getAddress(),
                 amountOfWETHToSpendOnProposal_RAW, addr1);
+        })
+        it.only("Should payout the proposer and the governor correctly", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+            const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+
+            // now mint the fund token
+            const amountToSpend = 100000n;
+            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+
+            // now add the wETH and cbBTC to the fund token
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
+            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
+
+            // now we can make proposals to be accepted
+            const amountToSpendProposal1 = 2001n;
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
+                amountToSpendProposal1 * 10n ** await usdc.decimals(), addr1);
+
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+
+
         })
     })
     describe("Fund Token", function ()
@@ -509,7 +533,7 @@ describe("Fund Functionalities", function ()
         })
         it("Should preform a swap correctly", async function ()
         {
-            // await resetForkedNetwork();
+            // await resetForkedNetwork()
             // this mine(1) needs to be here, as a result of an odd bug with hardhat
             // await mine(1);
             const latestBlock = await hre.ethers.provider.getBlock("latest");
@@ -518,6 +542,8 @@ describe("Fund Functionalities", function ()
                 this.skip();
             }
             const { owner, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+
+
 
             // now mint the fund token
             const amountToSpend = 100000n;

@@ -43,3 +43,16 @@
 - Added basic logic to distinguish between unit and integration tests in the `Fund.ts` test file
 - Added functionality to perform a basic swap on Uniswap for the underlying assets in the FundToken
     - Added a basic test case to test the swap functionality
+
+### v0.3:
+- Organized constants used for testing
+- Made tests more modular by moving duplicate code to functions
+- Added proposal logic to the Fund Controller
+    - Now any user can create a proposal
+    - The proposal can then be accepted by the governor
+    - If the governor accepts the proposal, the fund controller will execute the proposal
+    - Added basic test cases for the proposal logic
+- Added EPOCH logic to the Fund Controller
+    - Added just-in-time update logic to determine the total supply of fToken at the end of an EPOCH
+    - Added logic to payout successful proposers and active governors
+    - Added a few basic test cases to test the EPOCH logic and payout system

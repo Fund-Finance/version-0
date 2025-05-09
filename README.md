@@ -50,7 +50,7 @@
 - Added proposal logic to the Fund Controller
     - Now any user can create a proposal
     - The proposal can then be accepted by the governor
-    - If the governor accepts the proposal, the fund controller will execute the proposal
+    - If the governor accepts the proposal, the fund controller will execute it thus trading the underlying assets of the fund
     - Added basic test cases for the proposal logic
 - Added EPOCH logic to the Fund Controller
     - Added just-in-time update logic to determine the total supply of fToken at the end of an EPOCH

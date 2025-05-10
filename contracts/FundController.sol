@@ -153,6 +153,21 @@ contract FundController is Ownable
     function redeemAssets(uint256 _rawFTokenToRedeem) public
     {
         // redeem the assets first
+        require(s_IFundToken.balanceOf(msg.sender) >= _rawFTokenToRedeem, "You do not have enough FUND tokens to redeem");
+        // for now we will redeem assets by giving the user
+        // his proportional share of each underlying asset of the fund
+
+        asset[] memory fundAssets = s_IFundToken.getAssets();
+        for (uint256 i = 0; i < fundAssets.length; i++)
+        {
+            IERC20 assetToRedeem = fundAssets[i].token;
+            uint256 amountToRedeem = _rawFTokenToRedeem * assetToRedeem.balanceOf(address(s_IFundToken)) / s_IFundToken.totalSupply();
+            // transfer the asset to the user
+            assetToRedeem.transferFrom(address(s_IFundToken), msg.sender, amountToRedeem);
+        }
+        // TODO: look into re-entry attack, should we burn before distributing the assets?
+        // burn the fund tokens
+        s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
 
         if(getNextEpochDeadline())
         {

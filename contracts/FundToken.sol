@@ -19,6 +19,7 @@ contract FundToken is ERC20, Ownable
 {
     asset[] public s_supportedAssets;
     ISwapRouterExtended public immutable swapRouter;
+    address controllerAddress;
 
     // NOTE: Here the owner of the token is the controller
     constructor(address _controllerAddress, address _baseTokenAddress,
@@ -28,6 +29,10 @@ contract FundToken is ERC20, Ownable
         s_supportedAssets.push(asset(
             IERC20(_baseTokenAddress), AggregatorV3Interface(_baseTokenAggregatorAddress)));
         swapRouter = ISwapRouterExtended(_swapRouterAddress);
+        controllerAddress = _controllerAddress;
+        IERC20 baseToken = IERC20(_baseTokenAddress);
+        baseToken.approve(_controllerAddress, type(uint256).max);
+
     }
 
     function mint(address _to, uint256 _amount) external onlyOwner
@@ -42,6 +47,8 @@ contract FundToken is ERC20, Ownable
 
     function addAsset(address _assetAddress, address _aggregatorAddress) external onlyOwner
     {
+        IERC20 assetToAdd = IERC20(_assetAddress);
+        assetToAdd.approve(controllerAddress, type(uint256).max);
         s_supportedAssets.push(asset(IERC20(_assetAddress), AggregatorV3Interface(_aggregatorAddress)));
     }
 

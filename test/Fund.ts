@@ -172,7 +172,7 @@ describe("Fund Functionalities", function ()
         // send some tokens to the owner
         const AmountToSendOwner_cbBTC = 2n;
         const AmountToSendOwner_wETH = 5n;
-        const AmountToSendOwner_usdc = 100000000n;
+        const AmountToSendOwner_usdc = 100_000_000n;
         await cbBTC.connect(cbBTCWhaleSigner).transfer(owner.address,
             AmountToSendOwner_cbBTC * 10n ** await cbBTC.decimals());
         await wETH.connect(wETHWhaleSigner).transfer(owner.address,
@@ -448,6 +448,136 @@ describe("Fund Functionalities", function ()
             const AmountToSendOwner = 1000n;
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner); 
 
+        })
+        it("Should burn and redeem assets correctly: single token", async function ()
+        {
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
+            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
+            const AmountToSendOwner = 1000n;
+            await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner);
+
+            // now we can burn the fund token and redeem the assets
+            const ownerFundTokenAmountBeforeRedeem = await fundToken.balanceOf(await owner.getAddress());
+            const ownerUSDCBeforeRedeem = await usdcMock.balanceOf(await owner.getAddress());
+            const fundTokenUSDCBeforeRedeem = await usdcMock.balanceOf(await fundToken.getAddress());
+            const fundTokenTotalSupplyBeforeRedeem = await fundToken.totalSupply();
+
+            // NOTE: In this simple example, because we are only dealing with one asset
+            // the ratio of fToken to USDC is 1:1
+            // Hence amountToRedeem can be used for both the fund token and the USDC calcualtions
+            const amountToRedeem = 100n;
+            await fundController.connect(owner).redeemAssets(amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the total supply of the fund token has decreased
+            expect(await fundToken.totalSupply()).to.equal(
+                fundTokenTotalSupplyBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the amount of USDC in the fund decreased
+            expect(await usdcMock.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenUSDCBeforeRedeem - amountToRedeem * 10n ** await usdcMock.decimals());
+
+            // check the amount of fund token owned by the owner decreased
+            expect(await fundToken.balanceOf(await owner.getAddress())).to.equal(
+                ownerFundTokenAmountBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check the amount of USDC owned by the owner increased
+            expect(await usdcMock.balanceOf(await owner.getAddress())).to.equal(
+                ownerUSDCBeforeRedeem + amountToRedeem * 10n ** await usdcMock.decimals());
+            
+        })
+        it("Should burn and redeem assets correctly: multiple tokens", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+
+            const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+
+            // now mint the fund token
+            const amountToSpend = 100_000n;
+            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+
+            // now add the wETH and cbBTC to the fund token
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
+            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
+
+            // now we can make proposals to be accepted
+            const amountToSpendProposal1 = 2_000n;
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
+                amountToSpendProposal1 * 10n ** await usdc.decimals(), addr1);
+
+
+            const amountToSpendProposal2 = 10_000n;
+            await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
+                amountToSpendProposal2 * 10n ** await usdc.decimals(), addr2);
+
+            // now we can have the owner accept the proposal
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+            await acceptProposal(2n, fundController, fundToken, owner, usdc, cbBTC);
+
+            // now we can burn the fund token and redeem the assets
+            const ownerFundTokenAmountBeforeRedeem = await fundToken.balanceOf(await owner.getAddress());
+            const ownerUSDCBeforeRedeem = await usdc.balanceOf(await owner.getAddress());
+            const ownerWETHBeforeRedeem = await wETH.balanceOf(await owner.getAddress());
+            const ownerCBBTCBeforeRedeem = await cbBTC.balanceOf(await owner.getAddress());
+
+            const fundTokenTotalSupplyBeforeRedeem = await fundToken.totalSupply();
+            const fundTokenUSDCBeforeRedeem = await usdc.balanceOf(await fundToken.getAddress());
+            const fundTokenWETHBeforeRedeem = await wETH.balanceOf(await fundToken.getAddress());
+            const fundTokenCBBTCBeforeRedeem = await cbBTC.balanceOf(await fundToken.getAddress());
+
+            // Redeeming 1% of the fund
+            const amountToRedeem = amountToSpend / 100n;
+            await fundController.connect(owner).redeemAssets(amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the total supply of the fund token has decreased
+            expect(await fundToken.totalSupply()).to.equal(
+                fundTokenTotalSupplyBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the amount of USDC in the fund decreased
+            expect(await usdc.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenUSDCBeforeRedeem - ((fundTokenUSDCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check that the amount of wETH in the fund decreased
+            expect(await wETH.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenWETHBeforeRedeem - ((fundTokenWETHBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check that the amount of cbBTC in the fund decreased
+            expect(await cbBTC.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenCBBTCBeforeRedeem - ((fundTokenCBBTCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check the amount of fund token owned by the owner decreased
+            expect(await fundToken.balanceOf(await owner.getAddress())).to.equal(
+                ownerFundTokenAmountBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check the amount of USDC owned by the owner increased
+            expect(await usdc.balanceOf(await owner.getAddress())).to.equal(
+                ownerUSDCBeforeRedeem + ((fundTokenUSDCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check the amount of wETH owned by the owner increased 
+            expect(await wETH.balanceOf(await owner.getAddress())).to.equal(
+                ownerWETHBeforeRedeem + ((fundTokenWETHBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check the amount of cbBTC owned by the owner increased
+            expect(await cbBTC.balanceOf(await owner.getAddress())).to.equal(
+                ownerCBBTCBeforeRedeem + ((fundTokenCBBTCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
         })
         it("Should make a trade by the owner accepting a proposal submitted by a user", async function ()
         {

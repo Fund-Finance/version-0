@@ -73,6 +73,7 @@ contract FundController is Ownable
     uint256 latestProposalId;
 
     IERC20Extended private s_IUSDC;
+    AggregatorV3Interface usdcAggregator;
     IFundToken private s_IFundToken;
 
     ISwapRouterExtended public immutable swapRouter;
@@ -80,20 +81,21 @@ contract FundController is Ownable
     constructor(uint256 _initialEpochTime,
                uint256 _initialProposalPercentageReward,
                uint256 _initialGovernorPercentageReward,
-               address _usdcAddress, address swapRounterAddress)
-               Ownable(msg.sender)
+               address _usdcAddress, address usdcAggregatorAddress,
+               address swapRounterAddress) Ownable(msg.sender)
     {
         s_epochTime = _initialEpochTime;
         s_proposalPercentageReward = _initialProposalPercentageReward;
         s_governorPercentrageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
         swapRouter = ISwapRouterExtended(swapRounterAddress);
+        usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
     }
 
     function initialize(address _fundTokenAddress) external
     {
         s_IFundToken = IFundToken(_fundTokenAddress);
-        s_minToMint = 2 * 10 ** s_IFundToken.decimals();
+        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / 10 ** 2;
         latestProposalId = 1;
         s_epochExpirationTime = block.timestamp + s_epochTime;
     }
@@ -108,19 +110,25 @@ contract FundController is Ownable
     function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
     { s_governorPercentrageReward = _percentage; }
 
-    function issueStableCoin(uint256 _rawAmount) external onlyOwner
+    function issueStableCoin(uint256 _rawAmount) external
     {
         uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
         require(allowance >= _rawAmount, "You must approve the contract to spend your USDC");
+        (, int256 dollarToUSDC, , ,) = usdcAggregator.latestRoundData();
+        uint256 dollarAmount = _rawAmount * uint256(dollarToUSDC) / 10 ** usdcAggregator.decimals();
 
         // TODO: Look over this math and make sure
         // there are not vulnerabilities
-        uint256 unitConversion = 10 ** s_IFundToken.decimals() / 10 ** s_IUSDC.decimals();
-        uint256 rate;
+        uint256 initialRate = 10 ** 2;
+        uint256 unitConversionInitial = (10 ** s_IFundToken.decimals() / 10 ** s_IUSDC.decimals()) / initialRate;
+        // uint256 unitConversion = 10 ** s_IFundToken.decimals() * initialRate;
+        uint256 amountToMint;
         // then have 1 USDC = 1 FUND
         if (s_IFundToken.totalSupply() == 0)
         {
-            rate = 1;
+            // this rate is resiprocal
+            // 1 FUND = 100 USDC
+            amountToMint = dollarAmount * unitConversionInitial;
         }
         // it is based on the total value
         else
@@ -128,9 +136,11 @@ contract FundController is Ownable
             // THE RATE WILL RUN INTO PROBLEMS IF
             // THE TOTAL VALUE IS < $1
             uint256 totalValue = s_IFundToken.getTotalValueOfFund();
-            rate = totalValue / s_IFundToken.totalSupply();
+            // amountToMint = _rawAmount / rate;
+            amountToMint = (dollarAmount * s_IFundToken.totalSupply() / totalValue);
+            // amountToMint = (_rawAmount * totalValue * unitConversion) / s_IFundToken.totalSupply();
+
         }
-        uint256 amountToMint = _rawAmount * unitConversion * rate;
         require(amountToMint > s_minToMint, "You must mint more than the minimum amount");
 
         // check allowance
@@ -153,6 +163,21 @@ contract FundController is Ownable
     function redeemAssets(uint256 _rawFTokenToRedeem) public
     {
         // redeem the assets first
+        require(s_IFundToken.balanceOf(msg.sender) >= _rawFTokenToRedeem, "You do not have enough FUND tokens to redeem");
+        // for now we will redeem assets by giving the user
+        // his proportional share of each underlying asset of the fund
+
+        asset[] memory fundAssets = s_IFundToken.getAssets();
+        for (uint256 i = 0; i < fundAssets.length; i++)
+        {
+            IERC20 assetToRedeem = fundAssets[i].token;
+            uint256 amountToRedeem = _rawFTokenToRedeem * assetToRedeem.balanceOf(address(s_IFundToken)) / s_IFundToken.totalSupply();
+            // transfer the asset to the user
+            assetToRedeem.transferFrom(address(s_IFundToken), msg.sender, amountToRedeem);
+        }
+        // TODO: look into re-entry attack, should we burn before distributing the assets?
+        // burn the fund tokens
+        s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
 
         if(getNextEpochDeadline())
         {

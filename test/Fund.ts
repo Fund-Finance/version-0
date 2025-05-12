@@ -13,7 +13,7 @@ usdcAggregatorMockConstants, ethAggregatorMockConstants,
 wethAggregatorMockConstants, cbBTCAggregatorMockConstants,
 fundControllerConstants} from "./utils/constants";
 
-import { GenericERC20Mock, FundToken, FundController, IERC20Extended } from "../typechain-types/";
+import { GenericERC20Mock, FundToken, FundController, IERC20Extended, AggregatorV3Interface } from "../typechain-types/";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
 require("dotenv").config();
@@ -23,6 +23,7 @@ require("dotenv").config();
 // cbBTC price: ~$95,000
 
 const epsilon = BigInt(1);
+let prepopulateFund = false;
 describe("Fund Functionalities", function ()
 {
     async function resetForkedNetwork()
@@ -96,7 +97,8 @@ describe("Fund Functionalities", function ()
                [fundControllerConstants.initialEpochTime,
                fundControllerConstants.initialPercentageFeeProposers,
                fundControllerConstants.initialPercentageFeeGovernors,
-               await usdcMock.getAddress(), miscConstants.ZERO_ADDRESS]); // ZERO_ADDRESS for now
+               await usdcMock.getAddress(), await usdcMockAggregator.getAddress(),
+               miscConstants.ZERO_ADDRESS]); // ZERO_ADDRESS for now
 
         await fundController.waitForDeployment();
 
@@ -135,7 +137,8 @@ describe("Fund Functionalities", function ()
                [fundControllerConstants.initialEpochTime,
                fundControllerConstants.initialPercentageFeeProposers,
                fundControllerConstants.initialPercentageFeeGovernors,
-               baseMainnetConstants.usdcAddress, baseMainnetConstants.uniswapRouterAddress]);
+               baseMainnetConstants.usdcAddress, baseMainnetConstants.usdcAggregatorAddress,
+               baseMainnetConstants.uniswapRouterAddress]);
 
         await fundController.waitForDeployment();
 
@@ -169,24 +172,76 @@ describe("Fund Functionalities", function ()
         const wETH: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.wETHAddress);
         const usdc: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.usdcAddress);
 
-        // send some tokens to the owner
-        const AmountToSendOwner_cbBTC = 2n;
-        const AmountToSendOwner_wETH = 5n;
-        const AmountToSendOwner_usdc = 100000000n;
+        // send some tokens to the owner, addr1, and addr2
+        const AmountToSendAddresses_cbBTC = 2n;
+        const AmountToSendAddresses_wETH = 5n;
+        const AmountToSendAddresses_usdc = 10_000_000n;
         await cbBTC.connect(cbBTCWhaleSigner).transfer(owner.address,
-            AmountToSendOwner_cbBTC * 10n ** await cbBTC.decimals());
+            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
         await wETH.connect(wETHWhaleSigner).transfer(owner.address,
-            AmountToSendOwner_wETH * 10n ** await wETH.decimals());
+            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
         await usdc.connect(usdcWhaleSigner).transfer(owner.address,
-            AmountToSendOwner_usdc * 10n ** await usdc.decimals());
+            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+        await cbBTC.connect(cbBTCWhaleSigner).transfer(addr1.address,
+            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+        await wETH.connect(wETHWhaleSigner).transfer(addr1.address,
+            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+        await usdc.connect(usdcWhaleSigner).transfer(addr1.address,
+            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+        await cbBTC.connect(cbBTCWhaleSigner).transfer(addr2.address,
+            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+        await wETH.connect(wETHWhaleSigner).transfer(addr2.address,
+            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+        await usdc.connect(usdcWhaleSigner).transfer(addr2.address,
+            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+        if (prepopulateFund)
+        {
+            // prepopulate the fund with some assets
+            await cbBTC.connect(cbBTCWhaleSigner).transfer(fundToken.getAddress(),
+                AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+            await wETH.connect(wETHWhaleSigner).transfer(fundToken.getAddress(),
+                AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+            await usdc.connect(usdcWhaleSigner).transfer(fundToken.getAddress(),
+                AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+            // check that the fund token has the assets
+            expect(await cbBTC.balanceOf(fundToken.getAddress())).to.equal(
+                AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+            expect(await wETH.balanceOf(fundToken.getAddress())).to.equal(
+                AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+            expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(
+                AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+            prepopulateFund = false;
+
+        }
 
         // check that the balance of the owner is correct
         expect(await cbBTC.balanceOf(owner.address)).to.equal(
-            AmountToSendOwner_cbBTC * 10n ** await cbBTC.decimals());
+            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
         expect(await wETH.balanceOf(owner.address)).to.equal(
-            AmountToSendOwner_wETH * 10n ** await wETH.decimals());
+            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
         expect(await usdc.balanceOf(owner.address)).to.equal(
-            AmountToSendOwner_usdc * 10n ** await usdc.decimals());
+            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+        expect(await cbBTC.balanceOf(addr1.address)).to.equal(
+            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+        expect(await wETH.balanceOf(addr1.address)).to.equal(
+            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+        expect(await usdc.balanceOf(addr1.address)).to.equal(
+            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+        expect(await cbBTC.balanceOf(addr2.address)).to.equal(
+            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+        expect(await wETH.balanceOf(addr2.address)).to.equal(
+            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+        expect(await usdc.balanceOf(addr2.address)).to.equal(
+            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+
 
         return { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc};
     }
@@ -197,6 +252,8 @@ describe("Fund Functionalities", function ()
                                       fundController: FundController,
                                       AmountToSendOwner: bigint)
     {
+
+        const initialMintingRate = 10n ** 2n;
         const usdcMockContractSigner = await hre.ethers.getImpersonatedSigner(await usdcMock.getAddress());
         await usdcMock.connect(usdcMockContractSigner).transfer(owner.address,
                      AmountToSendOwner * 10n ** await usdcMock.decimals());
@@ -227,10 +284,10 @@ describe("Fund Functionalities", function ()
 
         // check the fund token total supply
         // NOTE: for the initial mint 1 fund token = 1 usdc
-        expect(await fundToken.totalSupply()).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+        expect(await fundToken.totalSupply()).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals() / initialMintingRate);
 
         // check the fund token balance of the minter
-        expect(await fundToken.balanceOf(owner.address)).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+        expect(await fundToken.balanceOf(owner.address)).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals() / initialMintingRate);
 
         // check that the fund token has received usdc 
         expect(await usdcMock.balanceOf(fundToken.getAddress())).to.equal(AmountToSendOwner * 10n ** await usdcMock.decimals());
@@ -239,6 +296,7 @@ describe("Fund Functionalities", function ()
 
 
     async function mintFromStableCoin_INTEGRATION(usdc: IERC20Extended,
+                                      usdcAggregatorAddress: string,
                                       owner: SignerWithAddress,
                                       fundToken: FundToken,
                                       fundController: FundController,
@@ -246,6 +304,7 @@ describe("Fund Functionalities", function ()
     {
         // now in order to mint we need to approve the fund Controller to spend
         // on our behalf
+        const usdcAggregator = await hre.ethers.getContractAt("@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface", usdcAggregatorAddress);
         await usdc.connect(owner).approve(await fundController.getAddress(),
             AmountToSendOwner * 10n ** await usdc.decimals());
 
@@ -253,22 +312,40 @@ describe("Fund Functionalities", function ()
         expect(await usdc.allowance(owner.address, await fundController.getAddress())).to.equal(
             AmountToSendOwner * 10n ** await usdc.decimals());
 
-        // now we can mint the fund token
-        // first let's check that the total total supply
-        // of the fund token is 0
-        expect(await fundToken.totalSupply()).to.equal(0n);
+        const fTokenTotalSupplyBeforeMint = await fundToken.totalSupply();
+        const ownerfTokenBalanceBeforeMint = await fundToken.balanceOf(owner.address);
+        const fundUSDCBalanceBeforeMint = await usdc.balanceOf(fundToken.getAddress());
         
-        await fundController.issueStableCoin(AmountToSendOwner * 10n ** await usdc.decimals());
+        let amountToMint = 0n;
+        const totalValueBeforeMint = await fundToken.getTotalValueOfFund();
+        if (await fundToken.totalSupply() == 0n)
+        {
+            const usdcAggregatorData = await usdcAggregator.latestRoundData()
+            const dollarToUSD = usdcAggregatorData[1];
+            const unitConversion = 10n ** 10n;
+            amountToMint = (AmountToSendOwner * (10n ** await usdc.decimals()) * dollarToUSD * unitConversion) / (10n ** await usdcAggregator.decimals());
+        }
+        else
+        {
+            // the additional 2n is for 10**2 which is the initial unit conversion
+            const usdcAggregatorData = await usdcAggregator.latestRoundData()
+            const dollarToUSD = usdcAggregatorData[1];
+            amountToMint = (AmountToSendOwner * 10n ** await usdc.decimals() *
+            dollarToUSD * fTokenTotalSupplyBeforeMint) /
+            (await fundToken.getTotalValueOfFund() *
+            10n ** await usdcAggregator.decimals())
+        }
+        await fundController.connect(owner).issueStableCoin(AmountToSendOwner * 10n ** await usdc.decimals());
 
-        // check the fund token total supply
-        // NOTE: for the initial mint 1 fund token = 1 usdc
-        expect(await fundToken.totalSupply()).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+        expect(await fundToken.totalSupply()).to.equal(fTokenTotalSupplyBeforeMint + amountToMint);
 
         // check the fund token balance of the minter
-        expect(await fundToken.balanceOf(owner.address)).to.equal(AmountToSendOwner * 10n ** await fundToken.decimals());
+        expect(await fundToken.balanceOf(owner.address)).to.equal(ownerfTokenBalanceBeforeMint + amountToMint);
+
 
         // check that the fund token has received usdc 
-        expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(AmountToSendOwner * 10n ** await usdc.decimals());
+        expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(fundUSDCBalanceBeforeMint + 
+            AmountToSendOwner * 10n ** await usdc.decimals());
         
     }
 
@@ -449,6 +526,226 @@ describe("Fund Functionalities", function ()
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner); 
 
         })
+        it("Should mint the fund token correctly: multiple tokens, stable value", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+
+            const { owner, addr1, addr2, fundToken, fundController,
+                cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+
+            // now mint the fund token
+            const amountToMint1 = 100_000n;
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToMint1);
+
+            // now add the wETH and cbBTC to the fund token
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(),
+                                 baseMainnetConstants.wETHAggregatorAddress);
+            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(),
+                                 baseMainnetConstants.cbBTCAggregatorAddress);
+
+            // now we can make proposals to be accepted
+            const amountToSpendProposal1 = 2_000n;
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
+                amountToSpendProposal1 * 10n ** await usdc.decimals(), addr1);
+
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+
+            // now mint more
+            const amountToMint2 = 500_000n;
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, addr1, fundToken, fundController, amountToMint2);
+        })
+        it("Should mint the fund token correctly: multiple tokens, volitile value", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+
+            const { owner, addr1, addr2, fundToken, fundController,
+                cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+            const wethMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
+                        [wethAggregatorMockConstants.decimals,
+                        wethAggregatorMockConstants.initialAnswer * 10n ** wethAggregatorMockConstants.decimals]);
+            await wethMockAggregator.waitForDeployment();
+
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), await wethMockAggregator.getAddress());
+
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, 10_000n);
+
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, 10_000n);
+            // move all of the funds assets into weth
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(), 20_000n * 10n ** await usdc.decimals(), addr1);
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+
+            // now cut the fund in half
+            await wethMockAggregator.updateAnswer(wethAggregatorMockConstants.initialAnswer * 10n ** wethAggregatorMockConstants.decimals / 2n);
+
+
+            // now we test minting double as much fToken for the same price
+            let totalSupplyBeforeMint = await fundToken.totalSupply();
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, 10_000n);
+
+
+            // this one needs to be an approximation because now two assets are involved and
+            // 1 USDC is not exactly equal to $1
+            // if 1 USDC = exactly $1 this approximation would not be needed
+            const epsilonMint = await fundToken.totalSupply() / 100n;
+            expect(await fundToken.totalSupply()).to.be.closeTo(totalSupplyBeforeMint * 2n, epsilonMint);
+
+            // now the total supply should be around 400 fToken
+
+            await wethMockAggregator.updateAnswer(wethAggregatorMockConstants.initialAnswer * 10n ** wethAggregatorMockConstants.decimals * 2n);
+            totalSupplyBeforeMint = await fundToken.totalSupply();
+            const totalFundValueBeforeMint = await fundToken.getTotalValueOfFund();
+
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, 10_000n);
+            const amountMinted = await fundToken.totalSupply() - totalSupplyBeforeMint;
+
+            expect(amountMinted).to.be.closeTo(((10_000n * 10n ** await usdc.decimals() * totalSupplyBeforeMint) / (totalFundValueBeforeMint)), epsilonMint);
+            // console.log("fToken total supply: ", await fundToken.totalSupply());
+
+            // await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, 10_000n);
+
+            // wethMockAggregator.updateAnswer(1n * 10n ** wethAggregatorMockConstants.decimals);
+            // await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, 10_000n);
+
+        })
+        it("Should burn and redeem assets correctly: single token", async function ()
+        {
+            const initialMintingRate = 10n ** 2n;
+            if (network.network.name !== "hardhat")
+            {
+                this.skip();
+            }
+            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
+            const AmountToSendOwner = 100000n;
+            await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner);
+
+            // now we can burn the fund token and redeem the assets
+            const ownerFundTokenAmountBeforeRedeem = await fundToken.balanceOf(await owner.getAddress());
+            const ownerUSDCBeforeRedeem = await usdcMock.balanceOf(await owner.getAddress());
+            const fundTokenUSDCBeforeRedeem = await usdcMock.balanceOf(await fundToken.getAddress());
+            const fundTokenTotalSupplyBeforeRedeem = await fundToken.totalSupply();
+
+            // NOTE: In this simple example, because we are only dealing with one asset
+            // the ratio of fToken to USDC is 1:100
+            // Hence amountToRedeem can be used for both the fund token and the USDC calcualtions
+            const amountToRedeem = 100n;
+            await fundController.connect(owner).redeemAssets(amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the total supply of the fund token has decreased
+            expect(await fundToken.totalSupply()).to.equal(
+                fundTokenTotalSupplyBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the amount of USDC in the fund decreased
+            expect(await usdcMock.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenUSDCBeforeRedeem - amountToRedeem * 10n ** await usdcMock.decimals() * initialMintingRate);
+
+            // check the amount of fund token owned by the owner decreased
+            expect(await fundToken.balanceOf(await owner.getAddress())).to.equal(
+                ownerFundTokenAmountBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check the amount of USDC owned by the owner increased
+            expect(await usdcMock.balanceOf(await owner.getAddress())).to.equal(
+                ownerUSDCBeforeRedeem + amountToRedeem * 10n ** await usdcMock.decimals() * initialMintingRate);
+            
+        })
+        it("Should burn and redeem assets correctly: multiple tokens", async function ()
+        {
+            const latestBlock = await hre.ethers.provider.getBlock("latest");
+            if(network.network.name !== "localhost" || latestBlock.number < 20000)
+            {
+                this.skip();
+            }
+
+            const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+
+            // now mint the fund token
+            const amountToSpend = 100_000n;
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
+
+            // now add the wETH and cbBTC to the fund token
+            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
+            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
+
+            // now we can make proposals to be accepted
+            const amountToSpendProposal1 = 2_000n;
+            await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
+                amountToSpendProposal1 * 10n ** await usdc.decimals(), addr1);
+
+
+            const amountToSpendProposal2 = 10_000n;
+            await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
+                amountToSpendProposal2 * 10n ** await usdc.decimals(), addr2);
+
+            // now we can have the owner accept the proposal
+            await acceptProposal(1n, fundController, fundToken, owner, usdc, wETH);
+            await acceptProposal(2n, fundController, fundToken, owner, usdc, cbBTC);
+
+            // now we can burn the fund token and redeem the assets
+            const ownerFundTokenAmountBeforeRedeem = await fundToken.balanceOf(await owner.getAddress());
+            const ownerUSDCBeforeRedeem = await usdc.balanceOf(await owner.getAddress());
+            const ownerWETHBeforeRedeem = await wETH.balanceOf(await owner.getAddress());
+            const ownerCBBTCBeforeRedeem = await cbBTC.balanceOf(await owner.getAddress());
+
+            const fundTokenTotalSupplyBeforeRedeem = await fundToken.totalSupply();
+            const fundTokenUSDCBeforeRedeem = await usdc.balanceOf(await fundToken.getAddress());
+            const fundTokenWETHBeforeRedeem = await wETH.balanceOf(await fundToken.getAddress());
+            const fundTokenCBBTCBeforeRedeem = await cbBTC.balanceOf(await fundToken.getAddress());
+
+            // Redeeming 0.5% of the fund
+            const amountToRedeem = amountToSpend / 200n;
+            await fundController.connect(owner).redeemAssets(amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the total supply of the fund token has decreased
+            expect(await fundToken.totalSupply()).to.equal(
+                fundTokenTotalSupplyBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check that the amount of USDC in the fund decreased
+            expect(await usdc.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenUSDCBeforeRedeem - ((fundTokenUSDCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check that the amount of wETH in the fund decreased
+            expect(await wETH.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenWETHBeforeRedeem - ((fundTokenWETHBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check that the amount of cbBTC in the fund decreased
+            expect(await cbBTC.balanceOf(await fundToken.getAddress())).to.equal(
+                fundTokenCBBTCBeforeRedeem - ((fundTokenCBBTCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check the amount of fund token owned by the owner decreased
+            expect(await fundToken.balanceOf(await owner.getAddress())).to.equal(
+                ownerFundTokenAmountBeforeRedeem - amountToRedeem * 10n ** await fundToken.decimals());
+
+            // check the amount of USDC owned by the owner increased
+            expect(await usdc.balanceOf(await owner.getAddress())).to.equal(
+                ownerUSDCBeforeRedeem + ((fundTokenUSDCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check the amount of wETH owned by the owner increased 
+            expect(await wETH.balanceOf(await owner.getAddress())).to.equal(
+                ownerWETHBeforeRedeem + ((fundTokenWETHBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+
+            // check the amount of cbBTC owned by the owner increased
+            expect(await cbBTC.balanceOf(await owner.getAddress())).to.equal(
+                ownerCBBTCBeforeRedeem + ((fundTokenCBBTCBeforeRedeem *
+                amountToRedeem * 10n ** await fundToken.decimals())
+                / fundTokenTotalSupplyBeforeRedeem));
+        })
         it("Should make a trade by the owner accepting a proposal submitted by a user", async function ()
         {
             // await resetForkedNetwork();
@@ -462,7 +759,7 @@ describe("Fund Functionalities", function ()
 
             // now mint the fund token
             const amountToSpend = 100000n;
-            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
 
             // now add the wETH and cbBTC to the fund token
             await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
@@ -498,7 +795,7 @@ describe("Fund Functionalities", function ()
 
             // now mint the fund token
             const amountToSpend = 100000n;
-            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
 
             // now add the wETH and cbBTC to the fund token
             await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
@@ -543,7 +840,7 @@ describe("Fund Functionalities", function ()
             }
             const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
             const amountToSpend = 100_000n;
-            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
 
             // now add the wETH and cbBTC to the fund token
             await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
@@ -615,7 +912,7 @@ describe("Fund Functionalities", function ()
             }
             const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
             const amountToSpend = 100_000n;
-            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
 
             // now add the wETH and cbBTC to the fund token
             await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
@@ -739,7 +1036,7 @@ describe("Fund Functionalities", function ()
 
             // now mint the fund token
             const amountToSpend = 100000n;
-            await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, amountToSpend);
+            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
 
             await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
             await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);

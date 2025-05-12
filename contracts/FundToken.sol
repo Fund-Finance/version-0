@@ -6,12 +6,12 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "./interfaces/ISwapRouterExtended.sol";
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
-
+import "./interfaces/IERC20Extended.sol";
 import "hardhat/console.sol";
 
 struct asset
 {
-    IERC20 token;
+    IERC20Extended token;
     AggregatorV3Interface aggregator;
 }
 
@@ -19,6 +19,7 @@ contract FundToken is ERC20, Ownable
 {
     asset[] public s_supportedAssets;
     ISwapRouterExtended public immutable swapRouter;
+    address controllerAddress;
 
     // NOTE: Here the owner of the token is the controller
     constructor(address _controllerAddress, address _baseTokenAddress,
@@ -26,8 +27,12 @@ contract FundToken is ERC20, Ownable
         ERC20("FundToken", "FUND") Ownable(_controllerAddress)
     {
         s_supportedAssets.push(asset(
-            IERC20(_baseTokenAddress), AggregatorV3Interface(_baseTokenAggregatorAddress)));
+            IERC20Extended(_baseTokenAddress), AggregatorV3Interface(_baseTokenAggregatorAddress)));
         swapRouter = ISwapRouterExtended(_swapRouterAddress);
+        controllerAddress = _controllerAddress;
+        IERC20 baseToken = IERC20(_baseTokenAddress);
+        baseToken.approve(_controllerAddress, type(uint256).max);
+
     }
 
     function mint(address _to, uint256 _amount) external onlyOwner
@@ -42,12 +47,16 @@ contract FundToken is ERC20, Ownable
 
     function addAsset(address _assetAddress, address _aggregatorAddress) external onlyOwner
     {
-        s_supportedAssets.push(asset(IERC20(_assetAddress), AggregatorV3Interface(_aggregatorAddress)));
+        IERC20 assetToAdd = IERC20(_assetAddress);
+        assetToAdd.approve(controllerAddress, type(uint256).max);
+        s_supportedAssets.push(asset(IERC20Extended(_assetAddress), AggregatorV3Interface(_aggregatorAddress)));
     }
 
+    // returns with 10 ** 6 decimals
     function getTotalValueOfFund() external view returns (uint256)
     {
         uint256 totalValue = 0;
+        uint256 desiredDecimals = 10 ** 6;
         for(uint256 i = 0; i < s_supportedAssets.length; i++)
         {
             (,
@@ -55,9 +64,12 @@ contract FundToken is ERC20, Ownable
             ,
             ,
             ) = s_supportedAssets[i].aggregator.latestRoundData();
-            totalValue += uint256(answer) * s_supportedAssets[i].token.balanceOf(address(this));
+            totalValue += (uint256(answer) * s_supportedAssets[i].token.balanceOf(address(this)) * desiredDecimals) /
+                10 ** (s_supportedAssets[i].aggregator.decimals() + s_supportedAssets[i].token.decimals());
+                /// (decimalRatio * 10 ** s_supportedAssets[i].token.decimals());
 
         }
+        console.log();
         return totalValue;
     }
 

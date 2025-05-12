@@ -57,3 +57,11 @@
     - Added logic to payout successful proposers and active governors
         - **NOTE:** for now payouts are calculated using the total number of fToken at the end of an EPOCH
     - Added a few basic test cases to test the EPOCH logic and payout system
+
+### v0.4:
+- This release is the original target version of v0 as specified in [this Epic](https://github.com/orgs/Fund-Finance/projects/1?pane=issue&itemId=106788289&issue=Fund-Finance%7Cversion-0-old%7C1)
+- Added a redeem functionality using a multi-token redeem
+    - Meaning if a user redeems their fToken they will get a proportional amount of the underlying assets in the Fund
+- Added test basic cases for the redeem functionality
+- **Fixed major bug** assuming that 1USDC = 1 dollar when minting
+- Added basic NAV minting tests

@@ -24,7 +24,7 @@ require("dotenv").config();
 /**
  * resetForkedNetwork
  * This function resets the forked network to a specific block number
- * it used the eviornment variables ALCHEMY_URL and ALCHEMY_API_KEY
+ * it uses the eviornment variables ALCHEMY_URL and ALCHEMY_API_KEY
  * from the .env file to connect to the Alchemy API and
  * BASE_MAINNET_BLOCK_TO_FORK to set the block number to fork from
  * the base mainnet
@@ -51,6 +51,17 @@ async function resetForkedNetwork()
  * A fixture function that deploys the contracts for local testing
  * This includes core contracts (like the Fund Controller and Fund Token)
  * and mock contracts (like usdcMock)
+ * @returns owner: the owner who deployed the contracts
+ * @returns addr1: a wallet address for testing
+ * @returns addr2: another wallet address for testing
+ * @returns fundToken: the Fund Token contract
+ * @returns fundController: the Fund Controller contract
+ * @returns usdcMock: the USDC mock contract
+ * @returns usdcMockAggregator: the USDC mock aggregator contract
+ * @returns wethMock: the WETH mock contract
+ * @returns wethMockAggregator: the WETH mock aggregator contract
+ * @returns cbBTCMock: the cbBTC mock contract
+ * @returns cbBTCMockAggregator: the cbBTC mock aggregator contract
  */
 export async function contractDeploymentLocalFixture()
 {
@@ -176,8 +187,7 @@ export async function contractDeploymentLocalFixture()
     // initialize the Fund Controller
     await fundController.initialize(await fundToken.getAddress());
 
-    // return the contracts and the owner
-    return { owner, fundToken, fundController, usdcMock, usdcMockAggregator,
+    return { owner, addr1, addr2, fundToken, fundController, usdcMock, usdcMockAggregator,
              wethMock, wethMockAggregator, cbBTCMock, cbBTCMockAggregator };
     
 }
@@ -190,6 +200,17 @@ export async function contractDeploymentLocalFixture()
  * deploys the core contracts on the forked network,
  * and populates the wallets with tokens from the whales,
  * via signer impersonation.
+ * @returns owner: the owner who deployed the contracts
+ * @returns addr1: a wallet address for testing
+ * @returns addr2: another wallet address for testing
+ * @returns fundToken: the Fund Token contract
+ * @returns fundController: the Fund Controller contract
+ * @returns cbBTC: the cbBTC ERC20 contract
+ * @returns cbBTCAggregator: the cbBTC Aggregator contract
+ * @returns wETH: the wETH ERC20 contract
+ * @returns wETHAggregator: the wETH Aggregator contract
+ * @returns usdc: the USDC ERC20 contract
+ * @returns usdcAggregator: the USDC Aggregator contract
  */
 export async function contractDeploymentForkedFixture()
 {
@@ -307,8 +328,6 @@ export async function contractDeploymentForkedFixture()
         "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
         baseMainnetConstants.cbBTCAggregatorAddress);
 
-    // return the core contracts, the ERC20 contracts,
-    // the owner, and other testing addresses (addr1, addr2)
     return { owner, addr1, addr2, fundToken, fundController,
         cbBTC, cbBTCAggregator, wETH, wETHAggregator, usdc, usdcAggregator};
 }

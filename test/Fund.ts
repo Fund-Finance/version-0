@@ -97,8 +97,7 @@ describe("Fund Functionalities", function ()
                [fundControllerConstants.initialEpochTime,
                fundControllerConstants.initialPercentageFeeProposers,
                fundControllerConstants.initialPercentageFeeGovernors,
-               await usdcMock.getAddress(), await usdcMockAggregator.getAddress(),
-               miscConstants.ZERO_ADDRESS]); // ZERO_ADDRESS for now
+               await usdcMock.getAddress(), await usdcMockAggregator.getAddress()]);
 
         await fundController.waitForDeployment();
 
@@ -106,7 +105,7 @@ describe("Fund Functionalities", function ()
             fundControllerConstants.initialEpochTime);
         expect(await fundController.s_proposalPercentageReward()).to.equal(
             fundControllerConstants.initialPercentageFeeProposers);
-        expect(await fundController.s_governorPercentrageReward()).to.equal(
+        expect(await fundController.s_governorPercentageReward()).to.equal(
             fundControllerConstants.initialPercentageFeeGovernors);
 
         const fundToken = await hre.ethers.deployContract("FundToken",
@@ -137,8 +136,7 @@ describe("Fund Functionalities", function ()
                [fundControllerConstants.initialEpochTime,
                fundControllerConstants.initialPercentageFeeProposers,
                fundControllerConstants.initialPercentageFeeGovernors,
-               baseMainnetConstants.usdcAddress, baseMainnetConstants.usdcAggregatorAddress,
-               baseMainnetConstants.uniswapRouterAddress]);
+               baseMainnetConstants.usdcAddress, baseMainnetConstants.usdcAggregatorAddress]);
 
         await fundController.waitForDeployment();
 
@@ -146,7 +144,7 @@ describe("Fund Functionalities", function ()
             fundControllerConstants.initialEpochTime);
         expect(await fundController.s_proposalPercentageReward()).to.equal(
             fundControllerConstants.initialPercentageFeeProposers);
-        expect(await fundController.s_governorPercentrageReward()).to.equal(
+        expect(await fundController.s_governorPercentageReward()).to.equal(
             fundControllerConstants.initialPercentageFeeGovernors);
 
         const fundToken = await hre.ethers.deployContract("FundToken",
@@ -280,7 +278,7 @@ describe("Fund Functionalities", function ()
         // of the fund token is 0
         expect(await fundToken.totalSupply()).to.equal(0n);
         
-        await fundController.issueStableCoin(AmountToSendOwner * 10n ** await usdcMock.decimals());
+        await fundController.issueUsingStableCoin(AmountToSendOwner * 10n ** await usdcMock.decimals());
 
         // check the fund token total supply
         // NOTE: for the initial mint 1 fund token = 1 usdc
@@ -335,7 +333,7 @@ describe("Fund Functionalities", function ()
             (await fundToken.getTotalValueOfFund() *
             10n ** await usdcAggregator.decimals())
         }
-        await fundController.connect(owner).issueStableCoin(AmountToSendOwner * 10n ** await usdc.decimals());
+        await fundController.connect(owner).issueUsingStableCoin(AmountToSendOwner * 10n ** await usdc.decimals());
 
         expect(await fundToken.totalSupply()).to.equal(fTokenTotalSupplyBeforeMint + amountToMint);
 
@@ -512,7 +510,7 @@ describe("Fund Functionalities", function ()
             const newPercentageFeeGovernors = 300n;
             await fundController.setGovernorPercentageReward(newPercentageFeeGovernors);
             // check the new percentage fee for the governors
-            expect(await fundController.s_governorPercentrageReward()).to.equal(newPercentageFeeGovernors);
+            expect(await fundController.s_governorPercentageReward()).to.equal(newPercentageFeeGovernors);
 
         })
         it("Should mint the fund token correctly: single token", async function ()
@@ -1020,50 +1018,6 @@ describe("Fund Functionalities", function ()
             await addAssetToFund(fundController, fundToken, await wethMock.getAddress(), await wethMockAggregator.getAddress());
             // now add another asset
             await addAssetToFund(fundController, fundToken, await cbBTCMock.getAddress(), await cbBTCMockAggregator.getAddress());
-
-        })
-        it("Should preform a swap correctly", async function ()
-        {
-            // await resetForkedNetwork()
-            // this mine(1) needs to be here, as a result of an odd bug with hardhat
-            // await mine(1);
-            const latestBlock = await hre.ethers.provider.getBlock("latest");
-            if(network.network.name !== "localhost" || latestBlock.number < 20000)
-            {
-                this.skip();
-            }
-            const { owner, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
-
-            // now mint the fund token
-            const amountToSpend = 100000n;
-            await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, amountToSpend);
-
-            await addAssetToFund(fundController, fundToken, await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
-            await addAssetToFund(fundController, fundToken, await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
-
-            // now we can swap the tokens
-            // we will swap usdc for cbBTC
-            
-            // first check that the fund token has no cbBTC
-            expect(await cbBTC.balanceOf(fundToken.getAddress())).to.equal(0n);
-
-            // now swap
-            const amountOfUSDCBeforeSwap = await usdc.balanceOf(fundToken.getAddress());
-            const amountOfUSDCToSwap = amountToSpend - 150n;
-
-            await fundController.swapAsset(baseMainnetConstants.usdcAddress, baseMainnetConstants.cbBTCAddress,
-                                           amountOfUSDCToSwap * 10n ** await usdc.decimals());
-
-            // check that the fund token spent the usdc
-            expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(
-                amountOfUSDCBeforeSwap - amountOfUSDCToSwap * 10n ** await usdc.decimals());
-
-            // check that the fund token received the cbBTC
-            // TODO: have a better way to test this, here we should 
-            // receive 1 cbBTC for 100,000 usdc because of the block we
-            // are forking at, if we change the block number and the price
-            // falls, this test will fail
-            expect(await cbBTC.balanceOf(fundToken.getAddress())).to.be.greaterThan(1n ** 10n ** await cbBTC.decimals());
 
         })
     })

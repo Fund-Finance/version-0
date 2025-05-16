@@ -1,6 +1,5 @@
 import {
   loadFixture,
-  mine,
   time,
 } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
@@ -8,242 +7,23 @@ import hre from "hardhat";
 import network from "hardhat"
 
 import {miscConstants, baseMainnetConstants,
-usdcMockConstants, wethMockConstants, cbBTCMockConstants,
-usdcAggregatorMockConstants, ethAggregatorMockConstants,
-wethAggregatorMockConstants, cbBTCAggregatorMockConstants,
+ethAggregatorMockConstants, wethAggregatorMockConstants,
 fundControllerConstants} from "./utils/constants";
 
-import { GenericERC20Mock, FundToken, FundController, IERC20Extended, AggregatorV3Interface } from "../typechain-types/";
+import { contractDeploymentLocalFixture,
+contractDeploymentForkedFixture } from "./utils/fixtures";
+
+import { GenericERC20Mock, FundToken, FundController, IERC20Extended } from "../typechain-types/";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
-require("dotenv").config();
 
 // at block 29878423 on base:
 // eth price: ~$1800
 // cbBTC price: ~$95,000
 
 const epsilon = BigInt(1);
-let prepopulateFund = false;
 describe("Fund Functionalities", function ()
 {
-    async function resetForkedNetwork()
-    {
-        await hre.network.provider.request({
-            method: "hardhat_reset",
-            params: [
-            {
-                forking: {
-                    jsonRpcUrl: process.env.ALCHEMY_URL + process.env.ALCHEMY_API_KEY,
-                    blockNumber: Number(process.env.BASE_MAINNET_BLOCK_TO_FORK),
-                },
-              },
-            ],
-          });
-    }
-    async function contractDeploymentFixture()
-    {
-        const [owner] = await hre.ethers.getSigners();
-
-        const usdcMock = await hre.ethers.deployContract("GenericERC20Mock",
-                    [usdcMockConstants.name, usdcMockConstants.symbol,
-                    usdcMockConstants.decimals, usdcMockConstants.totalSupply]);
-        await usdcMock.waitForDeployment();
-
-        // check the initial supply of the mock usdc
-        expect(await usdcMock.totalSupply()).to.equal(
-            usdcMockConstants.totalSupply * 10n ** usdcMockConstants.decimals);
-
-        const usdcMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
-            [usdcAggregatorMockConstants.decimals,
-            usdcAggregatorMockConstants.initialAnswer * 10n ** usdcAggregatorMockConstants.decimals]);
-        await usdcMockAggregator.waitForDeployment();
-
-        expect(await usdcMockAggregator.decimals()).to.equal(usdcAggregatorMockConstants.decimals);
-
-        const wethMock = await hre.ethers.deployContract("GenericERC20Mock",
-                    [wethMockConstants.name, wethMockConstants.symbol,
-                    wethMockConstants.decimals, wethMockConstants.totalSupply]);
-        await wethMock.waitForDeployment();
-
-        expect(await wethMock.totalSupply()).to.equal(
-            wethMockConstants.totalSupply * 10n ** wethMockConstants.decimals);
-
-        // get a wETH/usd mock aggregator
-        const wethMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
-            [wethAggregatorMockConstants.decimals,
-            wethAggregatorMockConstants.initialAnswer * 10n ** wethAggregatorMockConstants.decimals]);
-        await wethMockAggregator.waitForDeployment();
-
-        expect(await wethMockAggregator.decimals()).to.equal(wethAggregatorMockConstants.decimals);
-
-        // get a cbBTC mock
-        const cbBTCMock = await hre.ethers.deployContract("GenericERC20Mock",
-                    [cbBTCMockConstants.name, cbBTCMockConstants.symbol,
-                    cbBTCMockConstants.decimals, cbBTCMockConstants.totalSupply]);
-        await cbBTCMock.waitForDeployment();
-
-        expect(await cbBTCMock.totalSupply()).to.equal(
-            cbBTCMockConstants.totalSupply * 10n ** cbBTCMockConstants.decimals);
-
-        // get a usdc mock aggregator
-        const cbBTCMockAggregator = await hre.ethers.deployContract("MockV3Aggregator",
-            [cbBTCAggregatorMockConstants.decimals,
-            cbBTCAggregatorMockConstants.initialAnswer * 10n ** cbBTCMockConstants.decimals]);
-        await cbBTCMockAggregator.waitForDeployment();
-        expect(await cbBTCMockAggregator.decimals()).to.equal(cbBTCAggregatorMockConstants.decimals);
-
-
-        const fundController = await hre.ethers.deployContract("FundController",
-               [fundControllerConstants.initialEpochTime,
-               fundControllerConstants.initialPercentageFeeProposers,
-               fundControllerConstants.initialPercentageFeeGovernors,
-               await usdcMock.getAddress(), await usdcMockAggregator.getAddress()]);
-
-        await fundController.waitForDeployment();
-
-        expect(await fundController.s_epochTime()).to.equal(
-            fundControllerConstants.initialEpochTime);
-        expect(await fundController.s_proposalPercentageReward()).to.equal(
-            fundControllerConstants.initialPercentageFeeProposers);
-        expect(await fundController.s_governorPercentageReward()).to.equal(
-            fundControllerConstants.initialPercentageFeeGovernors);
-
-        const fundToken = await hre.ethers.deployContract("FundToken",
-            [await fundController.getAddress(), await usdcMock.getAddress(), await usdcMockAggregator.getAddress(),
-            miscConstants.ZERO_ADDRESS]);   // ZERO_ADDRESS because this is for unit tests
-        await fundToken.waitForDeployment();
-
-        // check the base asset
-        let assets = await fundToken.getAssets();
-        expect(assets.length).to.equal(1);
-        expect(assets[0].token).to.equal(await usdcMock.getAddress());
-        expect(assets[0].aggregator).to.equal(await usdcMockAggregator.getAddress());
-
-        await fundController.initialize(await fundToken.getAddress());
-
-        return { owner, fundToken, fundController, usdcMock, usdcMockAggregator,
-                 wethMock, wethMockAggregator, cbBTCMock, cbBTCMockAggregator };
-        
-    }
-
-    async function contractDeploymentForkedFixture()
-    {
-        await resetForkedNetwork();
-        await mine(1);
-        const [owner, addr1, addr2] = await hre.ethers.getSigners();
-
-        const fundController = await hre.ethers.deployContract("FundController",
-               [fundControllerConstants.initialEpochTime,
-               fundControllerConstants.initialPercentageFeeProposers,
-               fundControllerConstants.initialPercentageFeeGovernors,
-               baseMainnetConstants.usdcAddress, baseMainnetConstants.usdcAggregatorAddress]);
-
-        await fundController.waitForDeployment();
-
-        expect(await fundController.s_epochTime()).to.equal(
-            fundControllerConstants.initialEpochTime);
-        expect(await fundController.s_proposalPercentageReward()).to.equal(
-            fundControllerConstants.initialPercentageFeeProposers);
-        expect(await fundController.s_governorPercentageReward()).to.equal(
-            fundControllerConstants.initialPercentageFeeGovernors);
-
-        const fundToken = await hre.ethers.deployContract("FundToken",
-            [await fundController.getAddress(), baseMainnetConstants.usdcAddress, baseMainnetConstants.usdcAggregatorAddress,
-            baseMainnetConstants.uniswapRouterAddress]);
-        await fundToken.waitForDeployment();
-
-        // check the base asset
-        let assets = await fundToken.getAssets();
-        expect(assets.length).to.equal(1);
-        expect(assets[0].token).to.equal(baseMainnetConstants.usdcAddress);
-        expect(assets[0].aggregator).to.equal(baseMainnetConstants.usdcAggregatorAddress);
-
-        await fundController.initialize(await fundToken.getAddress());
-
-        // impersonate the whales
-        const cbBTCWhaleSigner = await hre.ethers.getImpersonatedSigner(baseMainnetConstants.cbBTCWhaleAddress);
-        const wETHWhaleSigner = await hre.ethers.getImpersonatedSigner(baseMainnetConstants.wETHWhaleAddress);
-        const usdcWhaleSigner = await hre.ethers.getImpersonatedSigner(baseMainnetConstants.usdcWhaleAddress);
-
-        // get the contracts
-        const cbBTC: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.cbBTCAddress);
-        const wETH: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.wETHAddress);
-        const usdc: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.usdcAddress);
-
-        // send some tokens to the owner, addr1, and addr2
-        const AmountToSendAddresses_cbBTC = 2n;
-        const AmountToSendAddresses_wETH = 5n;
-        const AmountToSendAddresses_usdc = 10_000_000n;
-        await cbBTC.connect(cbBTCWhaleSigner).transfer(owner.address,
-            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-        await wETH.connect(wETHWhaleSigner).transfer(owner.address,
-            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-        await usdc.connect(usdcWhaleSigner).transfer(owner.address,
-            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-        await cbBTC.connect(cbBTCWhaleSigner).transfer(addr1.address,
-            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-        await wETH.connect(wETHWhaleSigner).transfer(addr1.address,
-            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-        await usdc.connect(usdcWhaleSigner).transfer(addr1.address,
-            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-        await cbBTC.connect(cbBTCWhaleSigner).transfer(addr2.address,
-            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-        await wETH.connect(wETHWhaleSigner).transfer(addr2.address,
-            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-        await usdc.connect(usdcWhaleSigner).transfer(addr2.address,
-            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-        if (prepopulateFund)
-        {
-            // prepopulate the fund with some assets
-            await cbBTC.connect(cbBTCWhaleSigner).transfer(fundToken.getAddress(),
-                AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-            await wETH.connect(wETHWhaleSigner).transfer(fundToken.getAddress(),
-                AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-            await usdc.connect(usdcWhaleSigner).transfer(fundToken.getAddress(),
-                AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-            // check that the fund token has the assets
-            expect(await cbBTC.balanceOf(fundToken.getAddress())).to.equal(
-                AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-            expect(await wETH.balanceOf(fundToken.getAddress())).to.equal(
-                AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-            expect(await usdc.balanceOf(fundToken.getAddress())).to.equal(
-                AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-            prepopulateFund = false;
-
-        }
-
-        // check that the balance of the owner is correct
-        expect(await cbBTC.balanceOf(owner.address)).to.equal(
-            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-        expect(await wETH.balanceOf(owner.address)).to.equal(
-            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-        expect(await usdc.balanceOf(owner.address)).to.equal(
-            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-        expect(await cbBTC.balanceOf(addr1.address)).to.equal(
-            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-        expect(await wETH.balanceOf(addr1.address)).to.equal(
-            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-        expect(await usdc.balanceOf(addr1.address)).to.equal(
-            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-        expect(await cbBTC.balanceOf(addr2.address)).to.equal(
-            AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
-        expect(await wETH.balanceOf(addr2.address)).to.equal(
-            AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
-        expect(await usdc.balanceOf(addr2.address)).to.equal(
-            AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
-
-
-
-        return { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc};
-    }
-
     async function mintFromStableCoin_MOCK(usdcMock: GenericERC20Mock,
                                       owner: SignerWithAddress,
                                       fundToken: FundToken,
@@ -315,7 +95,6 @@ describe("Fund Functionalities", function ()
         const fundUSDCBalanceBeforeMint = await usdc.balanceOf(fundToken.getAddress());
         
         let amountToMint = 0n;
-        const totalValueBeforeMint = await fundToken.getTotalValueOfFund();
         if (await fundToken.totalSupply() == 0n)
         {
             const usdcAggregatorData = await usdcAggregator.latestRoundData()
@@ -433,7 +212,7 @@ describe("Fund Functionalities", function ()
             {
                 this.skip();
             }
-            const { owner, fundToken, fundController } = await loadFixture(contractDeploymentFixture);
+            const { owner, fundToken, fundController } = await loadFixture(contractDeploymentLocalFixture);
 
             // check the ownership of the fund token
             expect(await fundToken.owner()).to.equal(await fundController.getAddress());
@@ -492,7 +271,7 @@ describe("Fund Functionalities", function ()
             {
                 this.skip();
             }
-            const { fundController } = await loadFixture(contractDeploymentFixture);
+            const { fundController } = await loadFixture(contractDeploymentLocalFixture);
 
             // set the new epoch time to two days
             const newEpochTime = 2n * miscConstants.ONE_DAY;
@@ -519,7 +298,7 @@ describe("Fund Functionalities", function ()
             {
                 this.skip();
             }
-            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
+            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentLocalFixture);
             const AmountToSendOwner = 1000n;
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner); 
 
@@ -604,13 +383,8 @@ describe("Fund Functionalities", function ()
             await mintFromStableCoin_INTEGRATION(usdc, baseMainnetConstants.usdcAggregatorAddress, owner, fundToken, fundController, 10_000n);
             const amountMinted = await fundToken.totalSupply() - totalSupplyBeforeMint;
 
-            expect(amountMinted).to.be.closeTo(((10_000n * 10n ** await usdc.decimals() * totalSupplyBeforeMint) / (totalFundValueBeforeMint)), epsilonMint);
-            // console.log("fToken total supply: ", await fundToken.totalSupply());
-
-            // await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, 10_000n);
-
-            // wethMockAggregator.updateAnswer(1n * 10n ** wethAggregatorMockConstants.decimals);
-            // await mintFromStableCoin_INTEGRATION(usdc, owner, fundToken, fundController, 10_000n);
+            expect(amountMinted).to.be.closeTo(((10_000n * 10n ** await usdc.decimals() * totalSupplyBeforeMint) /
+                                (totalFundValueBeforeMint)), epsilonMint);
 
         })
         it("Should burn and redeem assets correctly: single token", async function ()
@@ -620,7 +394,7 @@ describe("Fund Functionalities", function ()
             {
                 this.skip();
             }
-            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentFixture);
+            const { owner, fundToken, fundController, usdcMock } = await loadFixture(contractDeploymentLocalFixture);
             const AmountToSendOwner = 100000n;
             await mintFromStableCoin_MOCK(usdcMock, owner, fundToken, fundController, AmountToSendOwner);
 
@@ -789,7 +563,7 @@ describe("Fund Functionalities", function ()
             {
                 this.skip();
             }
-            const { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
+            const { owner, addr1, fundToken, fundController, cbBTC, wETH, usdc } = await loadFixture(contractDeploymentForkedFixture);
 
             // now mint the fund token
             const amountToSpend = 100000n;
@@ -1012,7 +786,7 @@ describe("Fund Functionalities", function ()
             }
             const { fundToken, fundController,
                 wethMock, wethMockAggregator,
-                cbBTCMock, cbBTCMockAggregator} = await loadFixture(contractDeploymentFixture);
+                cbBTCMock, cbBTCMockAggregator} = await loadFixture(contractDeploymentLocalFixture);
 
 
             await addAssetToFund(fundController, fundToken, await wethMock.getAddress(), await wethMockAggregator.getAddress());

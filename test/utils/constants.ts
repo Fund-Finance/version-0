@@ -123,6 +123,7 @@ interface FundControllerConstants
     initialEpochTime: bigint;
     initialPercentageFeeProposers: bigint;
     initialPercentageFeeGovernors: bigint;
+    initialMintingUnitConversion: bigint;
 }
 
 export const fundControllerConstants: FundControllerConstants =
@@ -132,4 +133,6 @@ export const fundControllerConstants: FundControllerConstants =
     // 1% fee = 1/0.01 = 100
     initialPercentageFeeProposers: 100n,
     initialPercentageFeeGovernors: 100n,
+
+    initialMintingUnitConversion: 100n
 }

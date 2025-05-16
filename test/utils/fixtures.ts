@@ -1,3 +1,9 @@
+/**
+ * @file fixtures.ts
+ * @description This file contains the fixtures for the tests.
+ * It also includes helper functions that the fixtures use.
+ */
+
 import hre from "hardhat";
 
 import {miscConstants, baseMainnetConstants,
@@ -10,6 +16,7 @@ import { expect } from "chai";
 import {mine} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 import { IERC20Extended } from "../../typechain-types/";
+import { AggregatorV3Interface } from "../../typechain-types/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface";
 require("dotenv").config();
 
 /*************** HELPER FUNCTIONS FOR FIXTURES *******************/
@@ -47,7 +54,7 @@ async function resetForkedNetwork()
  */
 export async function contractDeploymentLocalFixture()
 {
-    const [owner] = await hre.ethers.getSigners();
+    const [owner, addr1, addr2] = await hre.ethers.getSigners();
 
     /************** DEPLOY MOCKS FOR LOCAL TESTING ******************/
 
@@ -101,6 +108,40 @@ export async function contractDeploymentLocalFixture()
     await cbBTCMockAggregator.waitForDeployment();
     expect(await cbBTCMockAggregator.decimals()).to.equal(cbBTCAggregatorMockConstants.decimals);
 
+    /************** MOCK IMPERSONATION ******************/
+
+    const AmountToSendAddresses_cbBTC = 2n;
+    const AmountToSendAddresses_wETH = 5n;
+    const AmountToSendAddresses_usdc = 10_000_000n;
+
+    const usdcMockContractSigner = await hre.ethers.getImpersonatedSigner(await usdcMock.getAddress());
+    const wethMockContractSigner = await hre.ethers.getImpersonatedSigner(await wethMock.getAddress());
+    const cbBTCMockContractSigner = await hre.ethers.getImpersonatedSigner(await cbBTCMock.getAddress());
+
+    // send some tokens to the owner
+    await cbBTCMock.connect(cbBTCMockContractSigner).transfer(owner.address,
+        AmountToSendAddresses_cbBTC * 10n ** await cbBTCMock.decimals());
+    await wethMock.connect(wethMockContractSigner).transfer(owner.address,
+        AmountToSendAddresses_wETH * 10n ** await wethMock.decimals());
+    await usdcMock.connect(usdcMockContractSigner).transfer(owner.address,
+         AmountToSendAddresses_usdc * 10n ** await usdcMock.decimals());
+
+    // send some tokens to addr1
+    await cbBTCMock.connect(cbBTCMockContractSigner).transfer(addr1.address,
+        AmountToSendAddresses_cbBTC * 10n ** await cbBTCMock.decimals());
+    await wethMock.connect(wethMockContractSigner).transfer(addr1.address,
+        AmountToSendAddresses_wETH * 10n ** await wethMock.decimals());
+    await usdcMock.connect(usdcMockContractSigner).transfer(addr1.address,
+        AmountToSendAddresses_usdc * 10n ** await usdcMock.decimals());
+
+    // send some tokens to addr2
+    await cbBTCMock.connect(cbBTCMockContractSigner).transfer(addr2.address,
+        AmountToSendAddresses_cbBTC * 10n ** await cbBTCMock.decimals());
+    await wethMock.connect(wethMockContractSigner).transfer(addr2.address,
+        AmountToSendAddresses_wETH * 10n ** await wethMock.decimals());
+    await usdcMock.connect(usdcMockContractSigner).transfer(addr2.address,
+        AmountToSendAddresses_usdc * 10n ** await usdcMock.decimals());
+    
 
     /************** DEPLOY CORE CONTRACTS ******************/
 
@@ -256,8 +297,19 @@ export async function contractDeploymentForkedFixture()
     expect(await usdc.balanceOf(addr2.address)).to.equal(
         AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
 
+    const usdcAggregator: AggregatorV3Interface = await hre.ethers.getContractAt(
+        "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
+        baseMainnetConstants.usdcAggregatorAddress);
+    const wETHAggregator: AggregatorV3Interface = await hre.ethers.getContractAt(
+        "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
+        baseMainnetConstants.wETHAggregatorAddress);
+    const cbBTCAggregator: AggregatorV3Interface = await hre.ethers.getContractAt(
+        "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
+        baseMainnetConstants.cbBTCAggregatorAddress);
+
     // return the core contracts, the ERC20 contracts,
     // the owner, and other testing addresses (addr1, addr2)
-    return { owner, addr1, addr2, fundToken, fundController, cbBTC, wETH, usdc};
+    return { owner, addr1, addr2, fundToken, fundController,
+        cbBTC, cbBTCAggregator, wETH, wETHAggregator, usdc, usdcAggregator};
 }
 

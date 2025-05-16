@@ -1,6 +1,6 @@
 /**
- * foundationFunctions.ts
- * This is a utilities file that contains foundational functions
+ * @file foundationFunctions.ts
+ * @description This is a utilities file that contains foundational functions
  * which are used in the main unit tests. These functions consist of
  * operations that the test cases treat as atomic. In each of these
  * functions, the operation is run and tests are also run to ensure

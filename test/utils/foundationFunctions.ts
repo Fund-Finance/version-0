@@ -1,4 +1,5 @@
-/** foundationFunctions.ts
+/**
+ * foundationFunctions.ts
  * This is a utilities file that contains foundational functions
  * which are used in the main unit tests. These functions consist of
  * operations that the test cases treat as atomic. In each of these
@@ -40,11 +41,16 @@ export async function mintFromStableCoin(usdc: GenericERC20Mock | IERC20Extended
     expect(await usdc.allowance(owner.address, await fundController.getAddress())).to.equal(
         AmountToSpend * 10n ** await usdc.decimals());
 
+    // store the before state of the fund,
+    // these values will be used later in testing
     const fTokenTotalSupplyBeforeMint = await fundToken.totalSupply();
     const ownerfTokenBalanceBeforeMint = await fundToken.balanceOf(owner.address);
     const fundUSDCBalanceBeforeMint = await usdc.balanceOf(fundToken.getAddress());
     
     let amountToMint = 0n;
+    // if the fund token has no supply, we need to mint the initial amount
+    // This is a special case because the fund token is not yet in circulation
+    // In this case we mint based on the initial minting unit conversion
     if (await fundToken.totalSupply() == 0n)
     {
         const usdcAggregatorData = await usdcAggregator.latestRoundData()
@@ -54,6 +60,7 @@ export async function mintFromStableCoin(usdc: GenericERC20Mock | IERC20Extended
         amountToMint = (AmountToSpend * (10n ** await usdc.decimals()) * dollarToUSD * unitConversion) /
             (10n ** await usdcAggregator.decimals());
     }
+    // otherwise we mint based on the total value of the fund in $
     else
     {
         const usdcAggregatorData = await usdcAggregator.latestRoundData()
@@ -63,6 +70,8 @@ export async function mintFromStableCoin(usdc: GenericERC20Mock | IERC20Extended
         (await fundToken.getTotalValueOfFund() *
         10n ** await usdcAggregator.decimals())
     }
+
+    // call the operation to mint
     await fundController.connect(owner).issueUsingStableCoin(AmountToSpend * 10n ** await usdc.decimals());
 
     expect(await fundToken.totalSupply()).to.equal(fTokenTotalSupplyBeforeMint + amountToMint);
@@ -112,7 +121,7 @@ export async function addAssetToFund(fundController: FundController,
 }
 
 /** createProposal
- * creates a proposal which assets in the fund to trade
+ * creates a proposal of which assets in the fund to trade
  * and tests each step in the process
  * @param fundController: The fund controller contract
  * @param assetToTrade: The asset to trade

@@ -50,7 +50,7 @@ export async function mintFromStableCoin(usdc: GenericERC20Mock | IERC20Extended
     let amountToMint = 0n;
     // if the fund token has no supply, we need to mint the initial amount
     // This is a special case because the fund token is not yet in circulation
-    // In this case we mint based on the initial minting unit conversion
+    // In this case we mint taking into account the initial minting unit conversion
     if (await fundToken.totalSupply() == 0n)
     {
         const usdcAggregatorData = await usdcAggregator.latestRoundData()

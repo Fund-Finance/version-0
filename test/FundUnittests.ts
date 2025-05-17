@@ -131,8 +131,8 @@ describe("Fund Local Unit Tests", function ()
             }
             const { owner, fundToken, fundController, usdcMock, usdcMockAggregator } = await loadFixture(contractDeploymentLocalFixture);
             await usdcMockAggregator.updateAnswer(1n * 10n ** await usdcMockAggregator.decimals());
-            const AmountToSendOwner = 1000n;
-            await mintFromStableCoin(usdcMock, usdcMockAggregator, owner, fundToken, fundController, AmountToSendOwner); 
+            const amountToSpend_usdc = 1_000n;
+            await mintFromStableCoin(usdcMock, usdcMockAggregator, owner, fundToken, fundController, amountToSpend_usdc); 
 
         })
         // This test is meant to check that the fund controller can mint
@@ -146,9 +146,10 @@ describe("Fund Local Unit Tests", function ()
             }
             const { owner, fundToken, fundController, usdcMock, usdcMockAggregator } = await loadFixture(contractDeploymentLocalFixture);
             await usdcMockAggregator.updateAnswer(1n * 10n ** await usdcMockAggregator.decimals());
-            const AmountToSendOwner = 100000n;
-            await mintFromStableCoin(usdcMock, usdcMockAggregator, owner, fundToken, fundController, AmountToSendOwner);
+            const amountToSpend_usdc = 100_000n;
+            await mintFromStableCoin(usdcMock, usdcMockAggregator, owner, fundToken, fundController, amountToSpend_usdc);
 
+            // get the before values for testing later
             const ownerFundTokenAmountBeforeRedeem = await fundToken.balanceOf(await owner.getAddress());
             const ownerUSDCBeforeRedeem = await usdcMock.balanceOf(await owner.getAddress());
             const fundTokenUSDCBeforeRedeem = await usdcMock.balanceOf(await fundToken.getAddress());

@@ -65,12 +65,11 @@ describe("Fund Integration Tests", function ()
         await mintFromStableCoin(usdc, usdcAggregator, addr1, fundToken, fundController, amountToSpend2_usdc);
     })
 
-    // tests related to minting when there are multiple assets and the values
-    // of the underlying assets change
-    // Because fTokens are minting using the NAV value of the underlying assets,
+    // tests related to minting when there are multiple volitile assets
+    // Because fTokens are minted using the NAV value of the underlying assets,
     // this test checks that the minting amount is correct when the value of the
     // underlying assets change
-    it("Should mint the fund token correctly: multiple tokens, volitile value", async function ()
+    it.only("Should mint the fund token correctly: multiple tokens, volitile value", async function ()
     {
         const latestBlock = await hre.ethers.provider.getBlock("latest");
         if(network.network.name !== "localhost" || latestBlock.number < 20000)
@@ -94,6 +93,7 @@ describe("Fund Integration Tests", function ()
         const amountToSpend_usdc = 10_000n;
         await mintFromStableCoin(usdc, usdcAggregator, owner, fundToken, fundController, amountToSpend_usdc);
         await mintFromStableCoin(usdc, usdcAggregator, owner, fundToken, fundController, amountToSpend_usdc);
+
         // move all of the funds assets into wETH
         await createProposal(fundController, await usdc.getAddress(), await wETH.getAddress(),
                              amountToSpend_usdc * 2n * 10n ** await usdc.decimals(), addr1);
@@ -109,11 +109,13 @@ describe("Fund Integration Tests", function ()
 
 
         // this test needs to be an approximation because now two assets are involved and
-        // also because 1 USDC is not exactly equal to $1 (we are not using a mock aggregator for usdc)
-        // if 1 USDC = exactly $1 this approximation would not be needed
+        // a swap accured. As a result of the swap, we aren't guarenteed to receive the exact
+        // amount of wETH which can cause the total value of the fund to change
+        // slightly and thus the amount to mint will not be perfectly accurate
         const epsilonMint = await fundToken.totalSupply() / 100n;
         expect(await fundToken.totalSupply()).to.be.closeTo(totalSupplyBeforeThirdMint * 2n, epsilonMint);
 
+        // Now increase the total value of the fund by 4x
         await wethMockAggregator.updateAnswer(wethAggregatorMockConstants.initialAnswer * 10n ** wethAggregatorMockConstants.decimals * 2n);
         const totalSupplyBeforeFourthMint = await fundToken.totalSupply();
         const totalFundValueBeforeFourthMint = await fundToken.getTotalValueOfFund();

@@ -1,7 +1,12 @@
-// constants.ts
-// used to hold constants for the test cases
+/**
+ * @file constants.ts
+ * @description This file contains the constants used for 
+ * testing the project.
+ */
 
+/**************** MISC CONSTANTS *******************/
 
+// an interface used for Micellaneous constants
 interface MiscConstants
 {
     ONE_HOUR: bigint;
@@ -9,6 +14,7 @@ interface MiscConstants
     ZERO_ADDRESS: string;
 }
 
+// Miscellaneous constants definitions for the test cases
 export const miscConstants: MiscConstants =
 {
     ONE_HOUR: 60n * 60n,
@@ -16,6 +22,9 @@ export const miscConstants: MiscConstants =
     ZERO_ADDRESS: "0x0000000000000000000000000000000000000000",
 }
 
+/**************** BLOCKCHAIN NETWORK CONSTANTS *******************/
+
+// an interface used for the blockchain network constants
 interface BlockchainNetworkConstants
 {
     // the Addresses of the ERC20 tokens
@@ -36,6 +45,7 @@ interface BlockchainNetworkConstants
     uniswapRouterAddress: string;
 }
 
+// the base mainnet specific constants
 export const baseMainnetConstants: BlockchainNetworkConstants =
 {
     usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -55,6 +65,8 @@ export const baseMainnetConstants: BlockchainNetworkConstants =
     uniswapRouterAddress: "0x2626664c2603336E57B271c5C0b26F421741e481",
 }
 
+/*************** MOCK ERC20 CONSTANTS ******************/
+
 // interfaces for the ERC20s
 interface MockERC20Constants
 {
@@ -64,7 +76,7 @@ interface MockERC20Constants
     decimals: bigint;
 }
 
-// Mock ERC20 token constants definitions
+// The mock ERC20 constant definition of USDC
 export const usdcMockConstants: MockERC20Constants =
 {
     name: "USDC Mock",
@@ -73,14 +85,16 @@ export const usdcMockConstants: MockERC20Constants =
     decimals: 6n,
 }
 
+// The mock ERC20 constant definition of wETH
 export const wethMockConstants: MockERC20Constants =
 {
     name: "WETH Mock",
-    symbol: "WETM",
+    symbol: "wETM",
     decimals: 18n,
     totalSupply: 1000000000n,
 }
 
+// The mock ERC20 constant definition of cbBTC
 export const cbBTCMockConstants: MockERC20Constants =
 {
     name: "cbBTC Mock",
@@ -89,6 +103,8 @@ export const cbBTCMockConstants: MockERC20Constants =
     totalSupply: 1000000000n,
 }
 
+/**************** MOCK AGGREGATOR CONSTANTS ******************/
+
 // interface for the mock aggregators
 interface MockAggregatorConstants
 {
@@ -96,35 +112,43 @@ interface MockAggregatorConstants
     initialAnswer: bigint;
 }
 
-// Mock Aggregator constants definitionss
+// The mock aggregator constant definition of USDC/USD
 export const usdcAggregatorMockConstants: MockAggregatorConstants =
 {
     decimals: 8n,
     initialAnswer: 1n,
 }
 
+// The mock aggregator constant definition of ETH/USD
 export const ethAggregatorMockConstants: MockAggregatorConstants =
 {
     decimals: 8n,
     initialAnswer: 1800n,
 }
 
+// The mock aggregator constant definition of wETH/USD
 export const wethAggregatorMockConstants: MockAggregatorConstants =
     ethAggregatorMockConstants;
 
+// The mock aggregator constant definition of cbETH/USD
 export const cbBTCAggregatorMockConstants: MockAggregatorConstants =
 {
     decimals: 8n,
     initialAnswer: 100n,
 }
 
+/* ***************** CORE CONTRACT CONSTANTS ******************/
+
+// The interface for the FundController constants
 interface FundControllerConstants
 {
     initialEpochTime: bigint;
     initialPercentageFeeProposers: bigint;
     initialPercentageFeeGovernors: bigint;
+    initialMintingUnitConversion: bigint;
 }
 
+// The FundController constants definitions
 export const fundControllerConstants: FundControllerConstants =
 {
     initialEpochTime: miscConstants.ONE_DAY,
@@ -132,4 +156,6 @@ export const fundControllerConstants: FundControllerConstants =
     // 1% fee = 1/0.01 = 100
     initialPercentageFeeProposers: 100n,
     initialPercentageFeeGovernors: 100n,
+
+    initialMintingUnitConversion: 100n
 }

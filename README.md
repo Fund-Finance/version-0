@@ -65,3 +65,8 @@
 - Added test basic cases for the redeem functionality
 - **Fixed major bug** assuming that 1USDC = 1 dollar when minting
 - Added basic NAV minting tests
+
+### v0.4.1:
+- Major cleanup of the smart contracts and the test cases
+- overhaul of payout logic complete and accomplishes the task in a more efficient way
+- governors now get paid out each epoch even if no proposal was voted on

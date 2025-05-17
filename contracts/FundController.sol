@@ -17,28 +17,12 @@ struct Proposal
     address assetToTrade;
     address assetToReceive;
     uint256 amountIn;
-    uint256 epochDeadline;
 }
 
-struct SuccessfulProposer
+struct Proposer
 {
     address proposer;
     Proposal[] acceptedProposals;
-    // a mapping in which you put in the epoch
-    // deadline and you get the number of proposals
-    // that this user got accepted
-    mapping(uint256 => uint256) proposalPerEpochDeadline;
-}
-
-struct ActiveGovernor
-{
-    address governor;
-    // the proposals that the governor voted on
-    Proposal[] votedProposals;
-
-    // a mapping to see how many proposals the governor voted 
-    // on in a given epoch
-    mapping(uint256 => uint256) participationPerEpochDeadline;
 }
 
 contract FundController is Ownable
@@ -49,53 +33,53 @@ contract FundController is Ownable
     // NOTE: These percentage values are reciprical
     // meaning 1% would be 1/0.01 = 100
     uint256 public s_proposalPercentageReward;
-    uint256 public s_governorPercentrageReward;
+    uint256 public s_governorPercentageReward;
 
+    uint256 constant public initialMintingRate = 10 ** 2;
 
     uint256 public s_minToMint;
 
     uint256[] public s_activeProposalIds;
-    // mapping of epoch deadline to the number of acceptedProposals
-    mapping(uint256 => uint256) public totalAcceptedProposalsPerEpoch;
+
+    uint256 public totalAcceptedProposals;
     // mapping of proposalId to the the proposal
     mapping(uint256 => Proposal) public proposals;
-
-    // mapping of the EPOCH deadline to the number of fund tokens
-    mapping(uint256 => uint256) public totalFundTokenSupplyPerEpoch;
     
-    mapping(address => SuccessfulProposer) public successfulProposers;
-    address[] public successfulProposersList;
+    Proposer[] public successfulProposers;
 
-    // mapping of the epoch deadline to the governors that are active
-    mapping(address => ActiveGovernor) public activeGovernors;
-    address[] public participatingGovernorsList;
+    address[] public governors;
 
     uint256 latestProposalId;
 
     IERC20Extended private s_IUSDC;
-    AggregatorV3Interface usdcAggregator;
+    AggregatorV3Interface private usdcAggregator;
     IFundToken private s_IFundToken;
-
-    ISwapRouterExtended public immutable swapRouter;
 
     constructor(uint256 _initialEpochTime,
                uint256 _initialProposalPercentageReward,
                uint256 _initialGovernorPercentageReward,
-               address _usdcAddress, address usdcAggregatorAddress,
-               address swapRounterAddress) Ownable(msg.sender)
+               address _usdcAddress, address usdcAggregatorAddress)
+               Ownable(msg.sender)
     {
         s_epochTime = _initialEpochTime;
         s_proposalPercentageReward = _initialProposalPercentageReward;
-        s_governorPercentrageReward = _initialGovernorPercentageReward;
+        s_governorPercentageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
-        swapRouter = ISwapRouterExtended(swapRounterAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
+
+        // Register the owner as the first governor
+        // Ownable can only have 1 owner at a given time
+        // Currently this means that the only way to accrue governors is to trasnfer
+        // ownership and then have them call registerGovernor()
+        // TODO: think about how we want to manage multiple governors
+        // - Probably should use Openzepplin Roles instead/in addition to Ownable
+        governors.push(msg.sender);
     }
 
     function initialize(address _fundTokenAddress) external
     {
         s_IFundToken = IFundToken(_fundTokenAddress);
-        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / 10 ** 2;
+        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / initialMintingRate;
         latestProposalId = 1;
         s_epochExpirationTime = block.timestamp + s_epochTime;
     }
@@ -108,60 +92,43 @@ contract FundController is Ownable
     { s_proposalPercentageReward = _percentage; }
 
     function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
-    { s_governorPercentrageReward = _percentage; }
+    { s_governorPercentageReward = _percentage; }
 
-    function issueStableCoin(uint256 _rawAmount) external
+    function issueUsingStableCoin(uint256 _rawAmount) external
     {
+        realizeFundFees();
         uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
         require(allowance >= _rawAmount, "You must approve the contract to spend your USDC");
         (, int256 dollarToUSDC, , ,) = usdcAggregator.latestRoundData();
         uint256 dollarAmount = _rawAmount * uint256(dollarToUSDC) / 10 ** usdcAggregator.decimals();
 
-        // TODO: Look over this math and make sure
-        // there are not vulnerabilities
-        uint256 initialRate = 10 ** 2;
-        uint256 unitConversionInitial = (10 ** s_IFundToken.decimals() / 10 ** s_IUSDC.decimals()) / initialRate;
-        // uint256 unitConversion = 10 ** s_IFundToken.decimals() * initialRate;
+        // this initial rate makes 1fToken = $100
+        uint256 unitConversionInitial = (10 ** (s_IFundToken.decimals() - s_IUSDC.decimals())) / initialMintingRate;
         uint256 amountToMint;
-        // then have 1 USDC = 1 FUND
+
+        // if this is the first time the fund token is being minted
+        // base it off of the dollar amount such that 1 fund token = $100
         if (s_IFundToken.totalSupply() == 0)
         {
-            // this rate is resiprocal
-            // 1 FUND = 100 USDC
             amountToMint = dollarAmount * unitConversionInitial;
         }
         // it is based on the total value
         else
         {
-            // THE RATE WILL RUN INTO PROBLEMS IF
-            // THE TOTAL VALUE IS < $1
-            uint256 totalValue = s_IFundToken.getTotalValueOfFund();
-            // amountToMint = _rawAmount / rate;
-            amountToMint = (dollarAmount * s_IFundToken.totalSupply() / totalValue);
-            // amountToMint = (_rawAmount * totalValue * unitConversion) / s_IFundToken.totalSupply();
+            amountToMint = (dollarAmount * s_IFundToken.totalSupply()) / s_IFundToken.getTotalValueOfFund();
 
         }
         require(amountToMint > s_minToMint, "You must mint more than the minimum amount");
-
-        // check allowance
 
         // then perform the transfer from function
         s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawAmount);
 
         s_IFundToken.mint(msg.sender, amountToMint);
-
-        if(getNextEpochDeadline())
-        {
-            payoutProposers();
-            payoutGovernors();
-            // if there is a new epoch set the to the total supply of the fund
-            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
-        }
-        totalFundTokenSupplyPerEpoch[s_epochExpirationTime] += amountToMint;
     }
 
     function redeemAssets(uint256 _rawFTokenToRedeem) public
     {
+        realizeFundFees();
         // redeem the assets first
         require(s_IFundToken.balanceOf(msg.sender) >= _rawFTokenToRedeem, "You do not have enough FUND tokens to redeem");
         // for now we will redeem assets by giving the user
@@ -178,93 +145,45 @@ contract FundController is Ownable
         // TODO: look into re-entry attack, should we burn before distributing the assets?
         // burn the fund tokens
         s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
-
-        if(getNextEpochDeadline())
-        {
-            payoutProposers();
-            payoutGovernors();
-            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
-        }
-        totalFundTokenSupplyPerEpoch[s_epochExpirationTime] -= _rawFTokenToRedeem;
-
     }
 
-    function payoutProposers() public
+    function realizeFundFees() public
     {
-        // iterate over all of the successful proposers
-        for(uint256 i = 0; i < successfulProposersList.length; i++)
+        // if the epoch hasn't ended there are no payouts
+        uint256 elapsedEpochs = elapsedEpochCount();
+        if (elapsedEpochs == 0)
         {
-            // for each of them get their accepted proposals
-            uint256 totalRewardForProposer = 0;
-            SuccessfulProposer storage proposer = successfulProposers[successfulProposersList[i]];
-            Proposal[] memory proposersAcceptedProposals = proposer.acceptedProposals;
-            // iterate over the accepted proposals and calculate the reward
-            for(uint256 j = 0; j < proposersAcceptedProposals.length; j++)
-            {
-                Proposal memory proposal = proposersAcceptedProposals[j];
-                // skip accepted proposals that are still in this epoch
-                if (proposal.epochDeadline > block.timestamp || proposal.epochDeadline == 0)
-                {
-                    continue;
-                }
-                uint256 totalAccepted = totalAcceptedProposalsPerEpoch[proposal.epochDeadline];
-                uint256 fundSizeAtEpoch = totalFundTokenSupplyPerEpoch[proposal.epochDeadline];
-                uint256 rewardForProposal = (fundSizeAtEpoch / (s_proposalPercentageReward * totalAccepted));
-                totalRewardForProposer += rewardForProposal;
-                delete proposer.acceptedProposals[j];
-            }
-            // remove a successful proposer if all of his/her
-            // accepted proposals have been paid out
-            if (proposer.acceptedProposals.length == 0)
-            {
-                delete successfulProposers[successfulProposersList[i]];
-                delete successfulProposersList[i];
-            }
-            // delete successfulProposers[successfulProposersList[i]];
-            s_IFundToken.mint(proposer.proposer, totalRewardForProposer);
+            return;
         }
-        if (successfulProposersList.length == 0)
-        {
-            delete successfulProposersList;
-        }
-        
-    }
 
-    function payoutGovernors() public
-    {
-        for (uint256 i = 0; i < participatingGovernorsList.length; i++)
+        // all payouts should be based on the supply before the payouts for this epoch
+        uint256 totalSupply = s_IFundToken.totalSupply();
+
+        // payout Proposers
+        // NOTE: if there are no successfulProposers, then no proposer fee is taken for that epoch
+        // TODO: consider if this fee should instead go to the governors
+        for(uint256 i = 0; i < successfulProposers.length; i++)
         {
-            uint256 totalRewardForGovernor = 0;
-            ActiveGovernor storage governor = activeGovernors[participatingGovernorsList[i]];
-            Proposal[] memory governorsVotedProposals = governor.votedProposals;
-            for (uint256 j = 0; j < governorsVotedProposals.length; j++)
-            {
-                Proposal memory proposal = governorsVotedProposals[j];
-                // for now the governors will only be rewarded for the proposals they voted on
-                // in the future they can be reward for doing other governance actions
-                // if we decide to do so
-                if (proposal.epochDeadline > block.timestamp || proposal.epochDeadline == 0)
-                {
-                    continue;
-                }
-                uint256 totalAccepted = totalAcceptedProposalsPerEpoch[proposal.epochDeadline];
-                uint256 fundSizeAtEpoch = totalFundTokenSupplyPerEpoch[proposal.epochDeadline];
-                uint256 rewardForGovernor = (fundSizeAtEpoch / (s_governorPercentrageReward * totalAccepted));
-                totalRewardForGovernor += rewardForGovernor;
-                delete governor.votedProposals[j];
-            }
-            // remove a governor if all of his/her
-            // accepted proposals have been paid out
-            if (governor.votedProposals.length == 0)
-            {
-                delete activeGovernors[participatingGovernorsList[i]];
-                delete participatingGovernorsList[i];
-            }
-            s_IFundToken.mint(governor.governor, totalRewardForGovernor);
+            Proposer storage proposer = successfulProposers[i];
+
+            // for now, rewards are just based on the total number of accepted proposals
+            uint256 acceptedProposalCount = proposer.acceptedProposals.length;
+
+            uint256 rewardForProposer = (totalSupply * acceptedProposalCount) / (s_proposalPercentageReward * totalAcceptedProposals);
+
+            // pay the proposer their reward
+            s_IFundToken.mint(proposer.proposer, rewardForProposer);
         }
-        if (participatingGovernorsList.length == 0)
+        delete successfulProposers;
+        totalAcceptedProposals = 0;
+
+        // payout Governors for all elapsed epochs since last payout
+        for (uint256 i = 0; i < governors.length; i++)
         {
-            delete participatingGovernorsList;
+            address governor = governors[i];
+            uint256 rewardForGovernor = ((totalSupply / s_governorPercentageReward) * elapsedEpochs) / governors.length;
+
+            s_IFundToken.mint(governor, rewardForGovernor);
         }
     }
 
@@ -273,22 +192,18 @@ contract FundController is Ownable
         s_IFundToken.addAsset(_assetAddress, _aggregatorAddress);
     }
 
-    // TODO: Remove this function, a swap should only happen through a proposal
-    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
-        returns (uint256 amountOut)
+    // returns the number of epochs since the deadline was last set
+    // also, sets s_epochExpirationTime to the next epoch deadline after the current time
+    // NOTE: some epochs may be skipped if no actions occured and we count these for fee accrual
+    function elapsedEpochCount() internal returns (uint256 elapsedEpochs)
     {
-        amountOut = s_IFundToken.swapAsset(_assetToTrade, _assetToGet, _amountIn);
-        return amountOut;
-    }
-
-    function getNextEpochDeadline() public returns (bool newEpoch)
-    {
-        newEpoch = block.timestamp > s_epochExpirationTime;
+        elapsedEpochs = 0;
         while (block.timestamp > s_epochExpirationTime)
         {
             s_epochExpirationTime += s_epochTime;
+            elapsedEpochs++;
         }
-        return newEpoch;
+        return elapsedEpochs;
     }
 
     function createProposal(address _assetToTrade, address _assetToReceive, uint256 _amountIn) external
@@ -298,8 +213,7 @@ contract FundController is Ownable
             msg.sender,
             _assetToTrade,
             _assetToReceive,
-            _amountIn,
-            0);
+            _amountIn);
         proposals[latestProposalId] = proposalToCreate;
         s_activeProposalIds.push(latestProposalId);
         latestProposalId++;
@@ -315,33 +229,25 @@ contract FundController is Ownable
         return activeProposals;
     }
 
-    function checkParticipatingGovernor(address _governor) public view returns (bool isParticipating)
+    // Returns the index of the proposer in successfulProposers or returns -1 if they aren't
+    // a successful proposer
+    function checkIsSuccessfulProposer(address _proposer) public view returns (int256 index)
     {
-        for(uint256 i = 0; i < participatingGovernorsList.length; i++)
+        index = -1;
+        for(uint256 i = 0; i < successfulProposers.length; i++)
         {
-            if(participatingGovernorsList[i] == _governor)
+            if(successfulProposers[i].proposer == _proposer)
             {
-                return true;
+                return int256(i);
             }
         }
-        return false;
-    }
-
-    function checkIsSuccessfulProposer(address _proposer) public view returns (bool isSuccessful)
-    {
-        for(uint256 i = 0; i < successfulProposersList.length; i++)
-        {
-            if(successfulProposersList[i] == _proposer)
-            {
-                return true;
-            }
-        }
-        return false;
+        return index;
     }
 
     function acceptProposal(uint256 proposalIdToAccept) external onlyOwner
         returns (uint256 amountOut)
     {
+        realizeFundFees();
         Proposal memory proposalToAccept = proposals[proposalIdToAccept];
         amountOut = s_IFundToken.swapAsset(
             proposalToAccept.assetToTrade,
@@ -359,41 +265,35 @@ contract FundController is Ownable
 
         delete proposals[proposalIdToAccept];
 
-        if(getNextEpochDeadline())
-        {
-            payoutProposers();
-            payoutGovernors();
-            totalFundTokenSupplyPerEpoch[s_epochExpirationTime] = s_IFundToken.totalSupply();
-        }
-        proposalToAccept.epochDeadline = s_epochExpirationTime;
-
         // increment the number of accepted proposals for this epoch
-        totalAcceptedProposalsPerEpoch[proposalToAccept.epochDeadline]++;
+        totalAcceptedProposals++;
 
-        successfulProposers[proposalToAccept.proposer].proposer = proposalToAccept.proposer;
-        successfulProposers[proposalToAccept.proposer].acceptedProposals.push(proposalToAccept);
-        successfulProposers[proposalToAccept.proposer].proposalPerEpochDeadline[proposalToAccept.epochDeadline]++;
-
-        if (!checkIsSuccessfulProposer(proposalToAccept.proposer))
+        Proposer storage successfulProposer;
+        int256 successfulProposerIndex = checkIsSuccessfulProposer(proposalToAccept.proposer);
+        if (successfulProposerIndex == -1)
         {
-            successfulProposersList.push(proposalToAccept.proposer);
+            // If this is the proposers first accepted proposal of the epoch add them to successfulProposers
+            successfulProposer = successfulProposers.push();
+            successfulProposer.proposer = proposalToAccept.proposer;
         }
-
-        // add the governor to the list of active governors
-        activeGovernors[msg.sender].governor = msg.sender;
-        activeGovernors[msg.sender].votedProposals.push(proposalToAccept);
-        activeGovernors[msg.sender].participationPerEpochDeadline[proposalToAccept.epochDeadline]++;
-
-        if (!checkParticipatingGovernor(msg.sender))
+        else
         {
-            participatingGovernorsList.push(msg.sender);
+            // Get them from the list if they are already there
+            successfulProposer = successfulProposers[uint256(successfulProposerIndex)];
         }
+        successfulProposer.acceptedProposals.push(proposalToAccept);
         
         return amountOut;
     }
-
-    function getCurrentBlockTimestamp() external view returns (uint256)
+    function registerGovernor() external onlyOwner
     {
-        return block.timestamp;
+        for (uint256 i = 0; i < governors.length; i++)
+        {
+            if (msg.sender == governors[i])
+            {
+                return;
+            }
+        }
+        governors.push(msg.sender);
     }
 }

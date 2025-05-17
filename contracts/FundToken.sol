@@ -9,6 +9,8 @@ import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import "./interfaces/IERC20Extended.sol";
 import "hardhat/console.sol";
 
+
+// an asset contains an ERC20 token and a Chainlink price feed
 struct asset
 {
     IERC20Extended token;
@@ -66,10 +68,8 @@ contract FundToken is ERC20, Ownable
             ) = s_supportedAssets[i].aggregator.latestRoundData();
             totalValue += (uint256(answer) * s_supportedAssets[i].token.balanceOf(address(this)) * desiredDecimals) /
                 10 ** (s_supportedAssets[i].aggregator.decimals() + s_supportedAssets[i].token.decimals());
-                /// (decimalRatio * 10 ** s_supportedAssets[i].token.decimals());
 
         }
-        console.log();
         return totalValue;
     }
 

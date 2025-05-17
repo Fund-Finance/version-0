@@ -486,13 +486,15 @@ describe("Fund Integration Tests", function ()
         await fundController.realizeFundFees()
 
         // constants for setting up the test
-        const totalAcceptedFirstEpoch = 2n;
-        const proposer1NumAcceptedFirstEpoch = 1n;
-        const proposer2NumAcceptedFirstEpoch = 1n;
+        // In this test, an active epoch is an epoch in which a proposer
+        // had his/her proposal accepted
+        const totalAcceptedFirstActiveEpoch = 2n;
+        const proposer1NumAcceptedFirstActiveEpoch = 1n;
+        const proposer2NumAcceptedFirstActiveEpoch = 1n;
 
-        const totalAcceptedSecondEpoch = 1n;
-        const proposer1NumAcceptedSecondEpoch = 1n;
-        const proposer2NumAcceptedSecondEpoch = 0n;
+        const totalAcceptedSecondActiveEpoch = 1n;
+        const proposer1NumAcceptedSecondActiveEpoch = 1n;
+        const proposer2NumAcceptedSecondActiveEpoch = 0n;
 
         // NOTE the following terminology:
         // EPOCH: a set amount of time to make proposals, proposers get rewarded on a per epoch basis
@@ -501,19 +503,19 @@ describe("Fund Integration Tests", function ()
         // passed since the last PAYOUT Time
 
         // the total rewards issued to the proposers during the first epoch
-        const totalRewardIssuedFirstEpochToProposers = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers);
+        const totalRewardIssuedFirstActiveEpochToProposers = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers);
         // the total rewards issued to the governors during the first payout
         const totalRewardIssuedFirstPayoutToGovernors = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors) * 
             numEpochsPassedBeforeFirstPayout;
 
         // the total rewards issued to both the proposers and the governors
-        const totalRewardIssuedFirstPayout = totalRewardIssuedFirstEpochToProposers + totalRewardIssuedFirstPayoutToGovernors;
+        const totalRewardIssuedFirstPayout = totalRewardIssuedFirstActiveEpochToProposers + totalRewardIssuedFirstPayoutToGovernors;
 
         // the total supply after the first payout = initial supply + the total rewards issued during payout
         const fTokenTotalSupplyAfterFirstPayout = fTokenTotalSupplyBeforePayout + totalRewardIssuedFirstPayout;
 
         // the total rewards issued to the proposers during the second payout
-        const totalRewardIssuedSecondEpochToProposers = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeProposers);
+        const totalRewardIssuedSecondActiveEpochToProposers = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeProposers);
 
         // the total rewards issued to the governors during the second payout
         const totalRewardIssuedSecondPayoutToGovernors = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeGovernors) * 
@@ -522,13 +524,13 @@ describe("Fund Integration Tests", function ()
         // the reward for the proposer = (totalRewardIssuedToPropers1stEpoch *
         // numYourAcceptedProposals1stEpoch / totalAcceptedProposals1stEpoch) + (totalRewardIssuedToPropers2ndEpoch *
         // numYourAcceptedProposals2ndEpoch / totalAcceptedProposals2ndEpoch)
-        const proposer1Reward = ((totalRewardIssuedFirstEpochToProposers * proposer1NumAcceptedFirstEpoch)
-                                 / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToProposers *
-                                    proposer1NumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
+        const proposer1Reward = ((totalRewardIssuedFirstActiveEpochToProposers * proposer1NumAcceptedFirstActiveEpoch)
+                                 / totalAcceptedFirstActiveEpoch) + ((totalRewardIssuedSecondActiveEpochToProposers *
+                                    proposer1NumAcceptedSecondActiveEpoch) / totalAcceptedSecondActiveEpoch);
 
-        const proposer2Reward = ((totalRewardIssuedFirstEpochToProposers * proposer2NumAcceptedFirstEpoch)
-                                 / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToProposers *
-                                    proposer2NumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
+        const proposer2Reward = ((totalRewardIssuedFirstActiveEpochToProposers * proposer2NumAcceptedFirstActiveEpoch)
+                                 / totalAcceptedFirstActiveEpoch) + ((totalRewardIssuedSecondActiveEpochToProposers *
+                                    proposer2NumAcceptedSecondActiveEpoch) / totalAcceptedSecondActiveEpoch);
 
         // this equation works because there is only one governor
         const governorReward = totalRewardIssuedFirstPayoutToGovernors + totalRewardIssuedSecondPayoutToGovernors;

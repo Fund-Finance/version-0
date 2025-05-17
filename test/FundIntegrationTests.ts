@@ -308,18 +308,16 @@ describe("Fund Integration Tests", function ()
         expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(proposerBalanceBeforePayout);
         expect(await fundToken.balanceOf(owner.getAddress())).to.equal(governorBalanceBeforePayout);
 
-        // check that calling the payout functions before the epoch deadline
+        // check that calling the realize fee function before the epoch deadline
         // doesn't change the balances
-        await fundController.payoutProposers();
-        await fundController.payoutGovernors();
+        await fundController.realizeFundFees();
         expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(proposerBalanceBeforePayout);
         expect(await fundToken.balanceOf(owner.getAddress())).to.equal(governorBalanceBeforePayout);
 
         // now increase the time so the epoch passes, payout the proposer and governor,
         // and test that the balances increased accordingly
         await time.increase(miscConstants.ONE_DAY);
-        await fundController.payoutProposers();
-        await fundController.payoutGovernors();
+        await fundController.realizeFundFees();
 
         expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(
             (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers) +
@@ -377,10 +375,9 @@ describe("Fund Integration Tests", function ()
         const proposer1BalanceBeforePayout = await fundToken.balanceOf(addr1.getAddress());
         const proposer2BalanceBeforePayout = await fundToken.balanceOf(addr2.getAddress());
 
-        // check that calling the payout functions before the epoch deadline
+        // check that calling the realize fee function before the epoch deadline
         // doesn't change the balances
-        await fundController.payoutProposers();
-        await fundController.payoutGovernors();
+        await fundController.realizeFundFees();
 
         expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(
             proposer1BalanceBeforePayout);
@@ -392,8 +389,7 @@ describe("Fund Integration Tests", function ()
         // now increase the time so the epoch passes, payout the proposers and governors,
         // and test that the balances of each increased correctly
         await time.increase(miscConstants.ONE_DAY);
-        await fundController.payoutProposers();
-        await fundController.payoutGovernors();
+        await fundController.realizeFundFees();
 
         const totalAcceptedThisEpoch = 3n;
         const proposer1NumAccepted = 2n;
@@ -457,6 +453,8 @@ describe("Fund Integration Tests", function ()
         const governorBalanceBeforePayout = await fundToken.balanceOf(owner.getAddress());
         const proposer1BalanceBeforePayout = await fundToken.balanceOf(addr1.getAddress());
         const proposer2BalanceBeforePayout = await fundToken.balanceOf(addr2.getAddress());
+        const numEpochsPassedBeforeFirstPayout = 2n;
+        const numEpochsPassedBeforeSecondPayout = 2n;
 
         // now we can make proposals to be accepted
         const amountToSpendProposal1_usdc = 2_001n;
@@ -471,56 +469,55 @@ describe("Fund Integration Tests", function ()
         await acceptProposal(2n, fundController, fundToken, owner, usdc, cbBTC);
 
         // pass the time by 2 epochs
-        await time.increase(miscConstants.ONE_DAY * 2n);
+        await time.increase(miscConstants.ONE_DAY * numEpochsPassedBeforeFirstPayout);
 
         // make another proposal
         const amountToSpendProposal3_usdc = 10_000n;
         await createProposal(fundController, await usdc.getAddress(), await cbBTC.getAddress(),
             amountToSpendProposal3_usdc * 10n ** await usdc.decimals(), addr1);
 
-        // accept the proposal
+        // accept the proposal, this will also internally call the realizeFundFees function
         await acceptProposal(3n, fundController, fundToken, owner, usdc, cbBTC);
 
         // increase the time by 2 epochs
-        await time.increase(miscConstants.ONE_DAY * 2n);
+        await time.increase(miscConstants.ONE_DAY * numEpochsPassedBeforeSecondPayout);
 
         // payout the proposers and governors
-        await fundController.payoutProposers();
-        await fundController.payoutGovernors();
+        await fundController.realizeFundFees()
 
         // constants for setting up the test
         const totalAcceptedFirstEpoch = 2n;
         const proposer1NumAcceptedFirstEpoch = 1n;
         const proposer2NumAcceptedFirstEpoch = 1n;
-        const governorNumAcceptedFirstEpoch = 2n;
 
         const totalAcceptedSecondEpoch = 1n;
         const proposer1NumAcceptedSecondEpoch = 1n;
         const proposer2NumAcceptedSecondEpoch = 0n;
-        const governorNumAcceptedSecondEpoch = 1n;
+
+        // NOTE the following terminology:
+        // EPOCH: a set amount of time to make proposals, proposers get rewarded on a per epoch basis
+        // PAYOUT: a superset of an EPOCH - the amount of time that has passed since the last time
+        // realizeFundFees was called successfully. Governors get rewarded based on how many epochs
+        // passed since the last PAYOUT Time
 
         // the total rewards issued to the proposers during the first epoch
         const totalRewardIssuedFirstEpochToProposers = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers);
-        // the total rewards issued to the governors during the first epoch
-        const totalRewardIssuedFirstEpochToGovernors = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors);
+        // the total rewards issued to the governors during the first payout
+        const totalRewardIssuedFirstPayoutToGovernors = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors) * 
+            numEpochsPassedBeforeFirstPayout;
 
         // the total rewards issued to both the proposers and the governors
-        const totalRewardIssuedFirstEpoch = totalRewardIssuedFirstEpochToProposers + totalRewardIssuedFirstEpochToGovernors;
+        const totalRewardIssuedFirstPayout = totalRewardIssuedFirstEpochToProposers + totalRewardIssuedFirstPayoutToGovernors;
 
-        // the total supply after the first epoch = initial supply + the total rewards issued during epoch
-        const fTokenTotalSupplyAfterFirstEpoch = fTokenTotalSupplyBeforePayout + totalRewardIssuedFirstEpoch;
+        // the total supply after the first payout = initial supply + the total rewards issued during payout
+        const fTokenTotalSupplyAfterFirstPayout = fTokenTotalSupplyBeforePayout + totalRewardIssuedFirstPayout;
 
-        // the total rewards issued to the proposers during the second epoch
-        const totalRewardIssuedSecondEpochToProposers = (fTokenTotalSupplyAfterFirstEpoch / fundControllerConstants.initialPercentageFeeProposers);
+        // the total rewards issued to the proposers during the second payout
+        const totalRewardIssuedSecondEpochToProposers = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeProposers);
 
-        // the total rewards issued to the governors during the second epoch
-        const totalRewardIssuedSecondEpochToGovernors = (fTokenTotalSupplyAfterFirstEpoch / fundControllerConstants.initialPercentageFeeGovernors);
-
-        // the total rewards issued to both the proposers and the governors
-        const totalRewardIssuedSecondEpoch = totalRewardIssuedSecondEpochToProposers + totalRewardIssuedSecondEpochToGovernors;
-
-        // the total supply after the second epoch = totalSupplyAfterFirstEpoch + the total rewards issued during this epoch
-        const fTokenTotalSupplyAfterSecondEpoch = fTokenTotalSupplyAfterFirstEpoch + totalRewardIssuedSecondEpoch;
+        // the total rewards issued to the governors during the second payout
+        const totalRewardIssuedSecondPayoutToGovernors = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeGovernors) * 
+            numEpochsPassedBeforeSecondPayout;
 
         // the reward for the proposer = (totalRewardIssuedToPropers1stEpoch *
         // numYourAcceptedProposals1stEpoch / totalAcceptedProposals1stEpoch) + (totalRewardIssuedToPropers2ndEpoch *
@@ -533,9 +530,8 @@ describe("Fund Integration Tests", function ()
                                  / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToProposers *
                                     proposer2NumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
 
-        const governorReward = ((totalRewardIssuedFirstEpochToGovernors * governorNumAcceptedFirstEpoch)
-                                / totalAcceptedFirstEpoch) + ((totalRewardIssuedSecondEpochToGovernors *
-                                    governorNumAcceptedSecondEpoch) / totalAcceptedSecondEpoch);
+        // this equation works because there is only one governor
+        const governorReward = totalRewardIssuedFirstPayoutToGovernors + totalRewardIssuedSecondPayoutToGovernors;
 
         // check the balances of the proposers and governors after the payout
         // and make sure they got paidout correctly

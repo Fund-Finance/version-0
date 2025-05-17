@@ -69,7 +69,7 @@ describe("Fund Integration Tests", function ()
     // Because fTokens are minted using the NAV value of the underlying assets,
     // this test checks that the minting amount is correct when the value of the
     // underlying assets change
-    it.only("Should mint the fund token correctly: multiple tokens, volitile value", async function ()
+    it("Should mint the fund token correctly: multiple tokens, volitile value", async function ()
     {
         const latestBlock = await hre.ethers.provider.getBlock("latest");
         if(network.network.name !== "localhost" || latestBlock.number < 20000)
@@ -110,8 +110,8 @@ describe("Fund Integration Tests", function ()
 
         // this test needs to be an approximation because now two assets are involved and
         // a swap accured. As a result of the swap, we aren't guarenteed to receive the exact
-        // amount of wETH which can cause the total value of the fund to change
-        // slightly and thus the amount to mint will not be perfectly accurate
+        // amount of wETH. This can cause the total value of the fund to change
+        // slightly and thus the amount to mint will not be perfectly double
         const epsilonMint = await fundToken.totalSupply() / 100n;
         expect(await fundToken.totalSupply()).to.be.closeTo(totalSupplyBeforeThirdMint * 2n, epsilonMint);
 
@@ -402,6 +402,8 @@ describe("Fund Integration Tests", function ()
 
         // the reward = (totalSupply / percentageFee) * (numYourAcceptedProposals / totalAcceptedProposals)
         // The equation was re-written slightly to avoid rounding errors
+        // Needs to be approximated due to division
+        // TODO: Look into this approximation via division a little more
         const epsilon = BigInt(1);
         // check for the proposer 1
         expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo

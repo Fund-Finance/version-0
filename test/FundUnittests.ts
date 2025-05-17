@@ -155,8 +155,8 @@ describe("Fund Local Unit Tests", function ()
             const fundTokenUSDCBeforeRedeem = await usdcMock.balanceOf(await fundToken.getAddress());
             const fundTokenTotalSupplyBeforeRedeem = await fundToken.totalSupply();
 
-            // NOTE: In this simple example, because we are only dealing with one asset
-            // the ratio of fToken to USDC is 1:100 as specified by the aggregator
+            // NOTE: In this simple example, because we are only dealing with one asset we set
+            // the ratio of fToken to USDC as 1:100 as specified by the aggregator
             // Hence amountToRedeem can be used for both the fund token and the USDC calcualtions
             const amountToRedeem = 100n;
             await fundController.connect(owner).redeemAssets(amountToRedeem * 10n ** await fundToken.decimals());

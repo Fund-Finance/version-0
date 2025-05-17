@@ -33,8 +33,9 @@ contract FundController is Ownable
     // NOTE: These percentage values are reciprical
     // meaning 1% would be 1/0.01 = 100
     uint256 public s_proposalPercentageReward;
-    uint256 public s_governorPercentrageReward;
+    uint256 public s_governorPercentageReward;
 
+    uint256 constant public initialMintingRate = 10 ** 2;
 
     uint256 public s_minToMint;
 
@@ -51,22 +52,19 @@ contract FundController is Ownable
     uint256 latestProposalId;
 
     IERC20Extended private s_IUSDC;
-    AggregatorV3Interface usdcAggregator;
+    AggregatorV3Interface private usdcAggregator;
     IFundToken private s_IFundToken;
-
-    ISwapRouterExtended public immutable swapRouter;
 
     constructor(uint256 _initialEpochTime,
                uint256 _initialProposalPercentageReward,
                uint256 _initialGovernorPercentageReward,
-               address _usdcAddress, address usdcAggregatorAddress,
-               address swapRounterAddress) Ownable(msg.sender)
+               address _usdcAddress, address usdcAggregatorAddress)
+               Ownable(msg.sender)
     {
         s_epochTime = _initialEpochTime;
         s_proposalPercentageReward = _initialProposalPercentageReward;
-        s_governorPercentrageReward = _initialGovernorPercentageReward;
+        s_governorPercentageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
-        swapRouter = ISwapRouterExtended(swapRounterAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
 
         // Register the owner as the first governor
@@ -81,7 +79,7 @@ contract FundController is Ownable
     function initialize(address _fundTokenAddress) external
     {
         s_IFundToken = IFundToken(_fundTokenAddress);
-        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / 10 ** 2;
+        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / initialMintingRate;
         latestProposalId = 1;
         s_epochExpirationTime = block.timestamp + s_epochTime;
     }
@@ -94,9 +92,9 @@ contract FundController is Ownable
     { s_proposalPercentageReward = _percentage; }
 
     function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
-    { s_governorPercentrageReward = _percentage; }
+    { s_governorPercentageReward = _percentage; }
 
-    function issueStableCoin(uint256 _rawAmount) external
+    function issueUsingStableCoin(uint256 _rawAmount) external
     {
         realizeFundFees();
         uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
@@ -104,33 +102,23 @@ contract FundController is Ownable
         (, int256 dollarToUSDC, , ,) = usdcAggregator.latestRoundData();
         uint256 dollarAmount = _rawAmount * uint256(dollarToUSDC) / 10 ** usdcAggregator.decimals();
 
-        // TODO: Look over this math and make sure
-        // there are not vulnerabilities
-        uint256 initialRate = 10 ** 2;
-        uint256 unitConversionInitial = (10 ** s_IFundToken.decimals() / 10 ** s_IUSDC.decimals()) / initialRate;
-        // uint256 unitConversion = 10 ** s_IFundToken.decimals() * initialRate;
+        // this initial rate makes 1fToken = $100
+        uint256 unitConversionInitial = (10 ** (s_IFundToken.decimals() - s_IUSDC.decimals())) / initialMintingRate;
         uint256 amountToMint;
-        // then have 1 USDC = 1 FUND
+
+        // if this is the first time the fund token is being minted
+        // base it off of the dollar amount such that 1 fund token = $100
         if (s_IFundToken.totalSupply() == 0)
         {
-            // this rate is resiprocal
-            // 1 FUND = 100 USDC
             amountToMint = dollarAmount * unitConversionInitial;
         }
         // it is based on the total value
         else
         {
-            // THE RATE WILL RUN INTO PROBLEMS IF
-            // THE TOTAL VALUE IS < $1
-            uint256 totalValue = s_IFundToken.getTotalValueOfFund();
-            // amountToMint = _rawAmount / rate;
-            amountToMint = (dollarAmount * s_IFundToken.totalSupply() / totalValue);
-            // amountToMint = (_rawAmount * totalValue * unitConversion) / s_IFundToken.totalSupply();
+            amountToMint = (dollarAmount * s_IFundToken.totalSupply()) / s_IFundToken.getTotalValueOfFund();
 
         }
         require(amountToMint > s_minToMint, "You must mint more than the minimum amount");
-
-        // check allowance
 
         // then perform the transfer from function
         s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawAmount);
@@ -162,7 +150,7 @@ contract FundController is Ownable
     function realizeFundFees() public
     {
         // if the epoch hasn't ended there are no payouts
-        uint256 elapsedEpochs =  elapsedEpochCount();
+        uint256 elapsedEpochs = elapsedEpochCount();
         if (elapsedEpochs == 0)
         {
             return;
@@ -181,18 +169,19 @@ contract FundController is Ownable
             // for now, rewards are just based on the total number of accepted proposals
             uint256 acceptedProposalCount = proposer.acceptedProposals.length;
 
-            uint256 rewardForProposer = (totalSupply / s_proposalPercentageReward) * (acceptedProposalCount / totalAcceptedProposals);
+            uint256 rewardForProposer = (totalSupply * acceptedProposalCount) / (s_proposalPercentageReward * totalAcceptedProposals);
 
             // pay the proposer their reward
             s_IFundToken.mint(proposer.proposer, rewardForProposer);
         }
         delete successfulProposers;
+        totalAcceptedProposals = 0;
 
         // payout Governors for all elapsed epochs since last payout
         for (uint256 i = 0; i < governors.length; i++)
         {
             address governor = governors[i];
-            uint256 rewardForGovernor = ((totalSupply / s_governorPercentrageReward) * elapsedEpochs) / governors.length;
+            uint256 rewardForGovernor = ((totalSupply / s_governorPercentageReward) * elapsedEpochs) / governors.length;
 
             s_IFundToken.mint(governor, rewardForGovernor);
         }
@@ -201,14 +190,6 @@ contract FundController is Ownable
     function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
     {
         s_IFundToken.addAsset(_assetAddress, _aggregatorAddress);
-    }
-
-    // TODO: Remove this function, a swap should only happen through a proposal
-    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
-        returns (uint256 amountOut)
-    {
-        amountOut = s_IFundToken.swapAsset(_assetToTrade, _assetToGet, _amountIn);
-        return amountOut;
     }
 
     // returns the number of epochs since the deadline was last set
@@ -304,7 +285,6 @@ contract FundController is Ownable
         
         return amountOut;
     }
-
     function registerGovernor() external onlyOwner
     {
         for (uint256 i = 0; i < governors.length; i++)
@@ -315,10 +295,5 @@ contract FundController is Ownable
             }
         }
         governors.push(msg.sender);
-    }
-
-    function getCurrentBlockTimestamp() external view returns (uint256)
-    {
-        return block.timestamp;
     }
 }

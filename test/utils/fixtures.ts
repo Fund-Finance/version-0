@@ -165,7 +165,7 @@ export async function contractDeploymentLocalFixture()
 
     await fundController.waitForDeployment();
 
-    expect(await fundController.s_epochTime()).to.equal(
+    expect(await fundController.s_epochDuration()).to.equal(
         fundControllerConstants.initialEpochTime);
     expect(await fundController.s_proposalPercentageReward()).to.equal(
         fundControllerConstants.initialPercentageFeeProposers);
@@ -231,7 +231,7 @@ export async function contractDeploymentForkedFixture()
 
     await fundController.waitForDeployment();
 
-    expect(await fundController.s_epochTime()).to.equal(
+    expect(await fundController.s_epochDuration()).to.equal(
         fundControllerConstants.initialEpochTime);
     expect(await fundController.s_proposalPercentageReward()).to.equal(
         fundControllerConstants.initialPercentageFeeProposers);

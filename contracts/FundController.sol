@@ -27,7 +27,7 @@ struct Proposer
 
 contract FundController is Ownable
 {
-    uint256 public s_epochTime;
+    uint256 public s_epochDuration;
     uint256 public s_epochExpirationTime;
 
     // NOTE: These percentage values are reciprical
@@ -61,7 +61,7 @@ contract FundController is Ownable
                address _usdcAddress, address usdcAggregatorAddress)
                Ownable(msg.sender)
     {
-        s_epochTime = _initialEpochTime;
+        s_epochDuration = _initialEpochTime;
         s_proposalPercentageReward = _initialProposalPercentageReward;
         s_governorPercentageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
@@ -81,12 +81,12 @@ contract FundController is Ownable
         s_IFundToken = IFundToken(_fundTokenAddress);
         s_minToMint = 2 * 10 ** s_IFundToken.decimals() / initialMintingRate;
         latestProposalId = 1;
-        s_epochExpirationTime = block.timestamp + s_epochTime;
+        s_epochExpirationTime = block.timestamp + s_epochDuration;
     }
 
     // setter functions for how the protocol opperates
     function setEpochTime(uint256 _epochTime) external onlyOwner
-    { s_epochTime = _epochTime; }
+    { s_epochDuration = _epochTime; }
 
     function setProposalPercentageReward(uint256 _percentage) external onlyOwner
     { s_proposalPercentageReward = _percentage; }
@@ -200,7 +200,7 @@ contract FundController is Ownable
         elapsedEpochs = 0;
         while (block.timestamp > s_epochExpirationTime)
         {
-            s_epochExpirationTime += s_epochTime;
+            s_epochExpirationTime += s_epochDuration;
             elapsedEpochs++;
         }
         return elapsedEpochs;

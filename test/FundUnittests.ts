@@ -106,7 +106,7 @@ describe("Fund Local Unit Tests", function ()
             const newEpochTime = 2n * miscConstants.ONE_DAY;
             await fundController.setEpochTime(newEpochTime);
             // now check the new epoch time
-            expect(await fundController.s_epochTime()).to.equal(newEpochTime);
+            expect(await fundController.s_epochDuration()).to.equal(newEpochTime);
 
             // set the new percentage fee for the proposers to 2%
             const newPercentageFeeProposers = 500n;

@@ -258,7 +258,8 @@ contract FundController is Ownable
         {
             if (s_activeProposalIds[i] == proposalIdToAccept)
             {
-                delete s_activeProposalIds[i];
+                s_activeProposalIds[i] = s_activeProposalIds[s_activeProposalIds.length - 1];
+                s_activeProposalIds.pop();
                 break;
             }
         }

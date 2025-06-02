@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import "solady/src/utils/FixedPointMathLib.sol";
 import "./interfaces/IERC20Extended.sol";
 import "./interfaces/IFundToken.sol";
 import "./FundToken.sol";
@@ -30,14 +31,12 @@ contract FundController is Ownable
     uint256 public s_epochDuration;
     uint256 public s_epochExpirationTime;
 
-    // NOTE: These percentage values are reciprical
-    // meaning 1% would be 1/0.01 = 100
     uint256 public s_proposalPercentageReward;
     uint256 public s_governorPercentageReward;
 
-    uint256 constant public initialMintingRate = 10 ** 2;
-
-    uint256 public s_minToMint;
+    // This value is used to determine the amount of FundToken to mint
+    // when the fund is empty. We will define it to be 1 FundToken = $100
+    uint256 constant public initialFundTokenValue = 100e18;
 
     uint256[] public s_activeProposalIds;
 
@@ -79,7 +78,6 @@ contract FundController is Ownable
     function initialize(address _fundTokenAddress) external
     {
         s_IFundToken = IFundToken(_fundTokenAddress);
-        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / initialMintingRate;
         latestProposalId = 1;
         s_epochExpirationTime = block.timestamp + s_epochDuration;
     }
@@ -94,34 +92,51 @@ contract FundController is Ownable
     function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
     { s_governorPercentageReward = _percentage; }
 
-    function issueUsingStableCoin(uint256 _rawAmount) external
+    /// Get normalized USDC/USD price in fixed-point (1e18) format
+    function getUsdcPrice() public view returns (uint256) {
+        (
+            , // roundId
+            int256 price, // answer
+            , // startedAt
+            uint256 updatedAt,
+            // answeredInRound
+        ) = usdcAggregator.latestRoundData();
+
+        require(updatedAt > 0 && price > 0, "Stale or invalid price");
+
+        return uint256(price) * (18 - usdcAggregator.decimals()) ** 10;
+    }
+
+    function issueUsingStableCoin(uint256 _USDCContributed) external
     {
         realizeFundFees();
         uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
-        require(allowance >= _rawAmount, "You must approve the contract to spend your USDC");
-        (, int256 dollarToUSDC, , ,) = usdcAggregator.latestRoundData();
-        uint256 dollarAmount = _rawAmount * uint256(dollarToUSDC) / 10 ** usdcAggregator.decimals();
+        require(allowance >= _USDCContributed, "You must approve the contract to spend your USDC");
+
+        // TODO: can remove if always true
+        require(s_IUSDC.decimals() == 18, "Unexpected units. Need to update code to normalize.");
+
+        // NOTE: mulWad rounds down
+        uint256 dollarValue = FixedPointMathLib.mulWad(_USDCContributed, getUsdcPrice());
 
         // this initial rate makes 1fToken = $100
-        uint256 unitConversionInitial = (10 ** (s_IFundToken.decimals() - s_IUSDC.decimals())) / initialMintingRate;
         uint256 amountToMint;
 
         // if this is the first time the fund token is being minted
         // base it off of the dollar amount such that 1 fund token = $100
         if (s_IFundToken.totalSupply() == 0)
         {
-            amountToMint = dollarAmount * unitConversionInitial;
+            amountToMint = FixedPointMathLib.divWad(dollarValue, initialFundTokenValue);
         }
-        // it is based on the total value
+        // otherwise mint such that the ratio of totalSupply to totalFundValue is preserved
         else
         {
-            amountToMint = (dollarAmount * s_IFundToken.totalSupply()) / s_IFundToken.getTotalValueOfFund();
+            amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue, s_IFundToken.totalSupply()), s_IFundToken.getTotalValueOfFund());
 
         }
-        require(amountToMint > s_minToMint, "You must mint more than the minimum amount");
 
         // then perform the transfer from function
-        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawAmount);
+        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _USDCContributed);
 
         s_IFundToken.mint(msg.sender, amountToMint);
     }
@@ -138,7 +153,8 @@ contract FundController is Ownable
         for (uint256 i = 0; i < fundAssets.length; i++)
         {
             IERC20 assetToRedeem = fundAssets[i].token;
-            uint256 amountToRedeem = _rawFTokenToRedeem * assetToRedeem.balanceOf(address(s_IFundToken)) / s_IFundToken.totalSupply();
+            // TODO: confirm if we should be using mulWad here (do things break if assetToRedeem is not in WAD)
+            uint256 amountToRedeem = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(_rawFTokenToRedeem, assetToRedeem.balanceOf(address(s_IFundToken))), s_IFundToken.totalSupply());
             // transfer the asset to the user
             assetToRedeem.transferFrom(address(s_IFundToken), msg.sender, amountToRedeem);
         }
@@ -169,7 +185,7 @@ contract FundController is Ownable
             // for now, rewards are just based on the total number of accepted proposals
             uint256 acceptedProposalCount = proposer.acceptedProposals.length;
 
-            uint256 rewardForProposer = (totalSupply * acceptedProposalCount) / (s_proposalPercentageReward * totalAcceptedProposals);
+            uint256 rewardForProposer = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18), FixedPointMathLib.mulWad(s_proposalPercentageReward, totalAcceptedProposals * 1e18));
 
             // pay the proposer their reward
             s_IFundToken.mint(proposer.proposer, rewardForProposer);
@@ -181,7 +197,7 @@ contract FundController is Ownable
         for (uint256 i = 0; i < governors.length; i++)
         {
             address governor = governors[i];
-            uint256 rewardForGovernor = ((totalSupply / s_governorPercentageReward) * elapsedEpochs) / governors.length;
+            uint256 rewardForGovernor = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(FixedPointMathLib.divWad(totalSupply, s_governorPercentageReward), elapsedEpochs * 1e18), governors.length * 1e18);
 
             s_IFundToken.mint(governor, rewardForGovernor);
         }

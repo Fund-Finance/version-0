@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "solady/src/utils/FixedPointMathLib.sol";
 import "./interfaces/ISwapRouterExtended.sol";
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import "./interfaces/IERC20Extended.sol";
@@ -54,11 +55,10 @@ contract FundToken is ERC20, Ownable
         s_supportedAssets.push(asset(IERC20Extended(_assetAddress), AggregatorV3Interface(_aggregatorAddress)));
     }
 
-    // returns with 10 ** 6 decimals
+    // returns in fixed-point (1e18) format
     function getTotalValueOfFund() external view returns (uint256)
     {
         uint256 totalValue = 0;
-        uint256 desiredDecimals = 10 ** 6;
         for(uint256 i = 0; i < s_supportedAssets.length; i++)
         {
             (,
@@ -66,9 +66,8 @@ contract FundToken is ERC20, Ownable
             ,
             ,
             ) = s_supportedAssets[i].aggregator.latestRoundData();
-            totalValue += (uint256(answer) * s_supportedAssets[i].token.balanceOf(address(this)) * desiredDecimals) /
-                10 ** (s_supportedAssets[i].aggregator.decimals() + s_supportedAssets[i].token.decimals());
-
+            uint256 assetPrice = uint256(answer) * (18 - s_supportedAssets[i].aggregator.decimals()) ** 10;
+            totalValue += FixedPointMathLib.mulWad(assetPrice, s_supportedAssets[i].token.balanceOf(address(this)));
         }
         return totalValue;
     }

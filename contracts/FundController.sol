@@ -31,6 +31,8 @@ contract FundController is Ownable
     uint256 public s_epochDuration;
     uint256 public s_epochExpirationTime;
 
+    // Percentages are defined in WAD (1e18)
+    // e.g., 1% = 0.01e18 = 1e16
     uint256 public s_proposalPercentageReward;
     uint256 public s_governorPercentageReward;
 
@@ -83,6 +85,7 @@ contract FundController is Ownable
     }
 
     // setter functions for how the protocol opperates
+    // TODO: Require epoch duration results in perfectly divisbile epochs per year? Require it is less than 1 year?
     function setEpochTime(uint256 _epochTime) external onlyOwner
     { s_epochDuration = _epochTime; }
 
@@ -163,6 +166,23 @@ contract FundController is Ownable
         s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
     }
 
+    // Computes: Per Epoch Fee=(1 + Annual Fee)**(1/N) − 1
+    // N = epochsPerYear
+    function perEpochFeePercentage(uint256 _annualFeePercentage) internal view returns (uint256)
+    {
+        // NOTE: not adjusted for years without exactly 365 days
+        uint256 epochsPerYear = 31_536_000 / s_epochDuration;
+
+        // 1 / epochsPerYear
+        uint256 exponent = FixedPointMathLib.divWad(1e18, epochsPerYear * 1e18);
+
+        // NOTE: powWad is an approximation according to docs
+        uint256 growthFactor = uint256(FixedPointMathLib.powWad(int256(1e18 + _annualFeePercentage), int256(exponent)));
+
+        // Subtract 1e18 to get just the fee
+        return growthFactor - 1e18;
+    }
+
     function realizeFundFees() public
     {
         // if the epoch hasn't ended there are no payouts
@@ -185,7 +205,7 @@ contract FundController is Ownable
             // for now, rewards are just based on the total number of accepted proposals
             uint256 acceptedProposalCount = proposer.acceptedProposals.length;
 
-            uint256 rewardForProposer = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18), FixedPointMathLib.mulWad(s_proposalPercentageReward, totalAcceptedProposals * 1e18));
+            uint256 rewardForProposer = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18), FixedPointMathLib.mulWad(perEpochFeePercentage(s_proposalPercentageReward), totalAcceptedProposals * 1e18));
 
             // pay the proposer their reward
             s_IFundToken.mint(proposer.proposer, rewardForProposer);
@@ -197,7 +217,7 @@ contract FundController is Ownable
         for (uint256 i = 0; i < governors.length; i++)
         {
             address governor = governors[i];
-            uint256 rewardForGovernor = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(FixedPointMathLib.divWad(totalSupply, s_governorPercentageReward), elapsedEpochs * 1e18), governors.length * 1e18);
+            uint256 rewardForGovernor = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(FixedPointMathLib.divWad(totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18), governors.length * 1e18);
 
             s_IFundToken.mint(governor, rewardForGovernor);
         }

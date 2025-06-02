@@ -116,8 +116,8 @@ contract FundController is Ownable
         uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
         require(allowance >= _USDCContributed, "You must approve the contract to spend your USDC");
 
-        // TODO: can remove if always true
-        require(s_IUSDC.decimals() == 18, "Unexpected units. Need to update code to normalize.");
+        // Convert to WAD
+        _USDCContributed =  _USDCContributed * (18 - s_IUSDC.decimals()) ** 10;
 
         // NOTE: mulWad rounds down
         uint256 dollarValue = FixedPointMathLib.mulWad(_USDCContributed, getUsdcPrice());

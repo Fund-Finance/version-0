@@ -96,7 +96,7 @@ contract FundController is Ownable
     { s_governorPercentageReward = _percentage; }
 
     /// Get normalized USDC/USD price in fixed-point (1e18) format
-    function getUsdcPrice() public view returns (uint256) {
+    function getUsdcPrice() internal view returns (uint256) {
         (
             , // roundId
             int256 price, // answer
@@ -107,7 +107,7 @@ contract FundController is Ownable
 
         require(updatedAt > 0 && price > 0, "Stale or invalid price");
 
-        return uint256(price) * (18 - usdcAggregator.decimals()) ** 10;
+        return uint256(price) * (10 ** (18 - usdcAggregator.decimals()));
     }
 
     function issueUsingStableCoin(uint256 _USDCContributed) external
@@ -117,10 +117,11 @@ contract FundController is Ownable
         require(allowance >= _USDCContributed, "You must approve the contract to spend your USDC");
 
         // TODO: can remove if always true
-        require(s_IUSDC.decimals() == 18, "Unexpected units. Need to update code to normalize.");
+        // require(s_IUSDC.decimals() == 6, "Unexpected units. Need to update code to normalize.");
+        uint256 usdcContributedInWAD = _USDCContributed * 10 ** (18 - s_IUSDC.decimals());
 
         // NOTE: mulWad rounds down
-        uint256 dollarValue = FixedPointMathLib.mulWad(_USDCContributed, getUsdcPrice());
+        uint256 dollarValue = FixedPointMathLib.mulWad(usdcContributedInWAD, getUsdcPrice());
 
         // this initial rate makes 1fToken = $100
         uint256 amountToMint;
@@ -134,8 +135,8 @@ contract FundController is Ownable
         // otherwise mint such that the ratio of totalSupply to totalFundValue is preserved
         else
         {
-            amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue, s_IFundToken.totalSupply()), s_IFundToken.getTotalValueOfFund());
-
+            amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue,
+                                                s_IFundToken.totalSupply()), s_IFundToken.getTotalValueOfFund());
         }
 
         // then perform the transfer from function
@@ -205,7 +206,11 @@ contract FundController is Ownable
             // for now, rewards are just based on the total number of accepted proposals
             uint256 acceptedProposalCount = proposer.acceptedProposals.length;
 
-            uint256 rewardForProposer = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18), FixedPointMathLib.mulWad(perEpochFeePercentage(s_proposalPercentageReward), totalAcceptedProposals * 1e18));
+            // this needs to be Mul because the fee is in "decimal form" (meaning < 1e18)
+            // so you need to do mulWad 
+            uint256 rewardForProposer = FixedPointMathLib.mulWad(
+                FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18),
+                FixedPointMathLib.divWad(perEpochFeePercentage(s_proposalPercentageReward), totalAcceptedProposals * 1e18));
 
             // pay the proposer their reward
             s_IFundToken.mint(proposer.proposer, rewardForProposer);
@@ -217,7 +222,9 @@ contract FundController is Ownable
         for (uint256 i = 0; i < governors.length; i++)
         {
             address governor = governors[i];
-            uint256 rewardForGovernor = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(FixedPointMathLib.divWad(totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18), governors.length * 1e18);
+            uint256 rewardForGovernor = FixedPointMathLib.divWad(
+                FixedPointMathLib.mulWad(FixedPointMathLib.mulWad(totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18),
+                governors.length * 1e18);
 
             s_IFundToken.mint(governor, rewardForGovernor);
         }

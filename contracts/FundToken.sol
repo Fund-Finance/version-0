@@ -66,8 +66,10 @@ contract FundToken is ERC20, Ownable
             ,
             ,
             ) = s_supportedAssets[i].aggregator.latestRoundData();
-            uint256 assetPrice = uint256(answer) * (18 - s_supportedAssets[i].aggregator.decimals()) ** 10;
-            totalValue += FixedPointMathLib.mulWad(assetPrice, s_supportedAssets[i].token.balanceOf(address(this)));
+            uint256 assetPrice = uint256(answer) * (10 ** (18 - s_supportedAssets[i].aggregator.decimals()));
+            uint256 tokenPrice = s_supportedAssets[i].token.balanceOf(address(this))
+                * (10 ** (18 - s_supportedAssets[i].token.decimals()));
+            totalValue += FixedPointMathLib.mulWad(assetPrice, tokenPrice);
         }
         return totalValue;
     }

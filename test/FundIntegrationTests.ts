@@ -123,7 +123,10 @@ describe("Fund Integration Tests", function ()
         await mintFromStableCoin(usdc, usdcAggregator, owner, fundToken, fundController, amountToSpend_usdc);
         const amountMinted = await fundToken.totalSupply() - totalSupplyBeforeFourthMint;
 
-        expect(amountMinted).to.be.closeTo(((amountToSpend_usdc * 10n ** await usdc.decimals() * totalSupplyBeforeFourthMint) /
+        // convert to the amount to spend in USDC in terms of 1e18
+        const amountToSpendUSDCInWad = (amountToSpend_usdc * 10n ** await usdc.decimals()) * 10n ** (18n - await usdc.decimals());
+        const numerator = amountToSpendUSDCInWad * totalSupplyBeforeFourthMint / (10n ** 18n);
+        expect(amountMinted).to.be.closeTo((numerator * (10n ** 18n) /
                             (totalFundValueBeforeFourthMint)), epsilonMint);
 
     })
@@ -319,13 +322,18 @@ describe("Fund Integration Tests", function ()
         await time.increase(miscConstants.ONE_DAY);
         await fundController.realizeFundFees();
 
-        expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(
-            (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers) +
-                proposerBalanceBeforePayout);
+        const epochsPerYear = miscConstants.ONE_DAY * 365n / fundControllerConstants.initialEpochTime;
+        const exponent = 1 / Number(epochsPerYear);
+        const feePerEpoch = (1 + (Number(fundControllerConstants.initialPercentageFeeProposers) / (10 ** 18))) ** exponent;
+        const reward = BigInt(Number(fTokenTotalSupplyBeforePayout) * feePerEpoch) - fTokenTotalSupplyBeforePayout;
 
-        expect(await fundToken.balanceOf(owner.getAddress())).to.equal(
-            (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors) +
-                governorBalanceBeforePayout);
+        // NOTE: This expect is an approximation because we did not use the BigInt
+        // type for calculating the reward so typescript might have done some approximations
+        // that were not in the solidity code
+        const epsilon = reward / 10000n;
+        expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo(reward + proposerBalanceBeforePayout, epsilon);
+
+        expect(await fundToken.balanceOf(owner.getAddress())).to.be.closeTo(reward + governorBalanceBeforePayout, epsilon);
 
     })
 
@@ -396,27 +404,27 @@ describe("Fund Integration Tests", function ()
         const proposer2NumAccepted = 1n;
         const governorNumAccepted = 3n;
 
-        // the reward = (totalSupply / percentageFee) * (numYourAcceptedProposals / totalAcceptedProposals)
-        // The equation was re-written slightly to avoid rounding errors
-        // Needs to be approximated due to division
-        // TODO: Look into this approximation via division a little more
-        const epsilon = BigInt(1);
-        // check for the proposer 1
-        expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo
-        ((fTokenTotalSupplyBeforePayout * proposer1NumAccepted)
-         / (fundControllerConstants.initialPercentageFeeProposers * totalAcceptedThisEpoch)
+        const epochsPerYear = miscConstants.ONE_DAY * 365n / fundControllerConstants.initialEpochTime;
+        const exponent = 1 / Number(epochsPerYear);
+        const feePerEpochProposers = (1 + (Number(fundControllerConstants.initialPercentageFeeProposers) / (10 ** 18))) ** exponent;
+        const feePerEpochGovernors = (1 + (Number(fundControllerConstants.initialPercentageFeeGovernors) / (10 ** 18))) ** exponent;
+        const rewardPerAcceptanceProposers = (BigInt(Number(fTokenTotalSupplyBeforePayout) * feePerEpochProposers) - fTokenTotalSupplyBeforePayout) / totalAcceptedThisEpoch;
+        const rewardPerAcceptanceGovernors = (BigInt(Number(fTokenTotalSupplyBeforePayout) * feePerEpochGovernors) - fTokenTotalSupplyBeforePayout) / totalAcceptedThisEpoch;
+
+        const proposer1Reward = rewardPerAcceptanceProposers * proposer1NumAccepted;
+        let epsilon = proposer1Reward / 10000n;
+        expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo(proposer1Reward
          + proposer1BalanceBeforePayout, epsilon);
 
         // check for the proposer 2
-        expect(await fundToken.balanceOf(addr2.getAddress())).to.be.closeTo
-        ((fTokenTotalSupplyBeforePayout * proposer2NumAccepted)
-         / (fundControllerConstants.initialPercentageFeeProposers * totalAcceptedThisEpoch)
+        const proposer2Reward = rewardPerAcceptanceProposers * proposer2NumAccepted;
+        epsilon = proposer2Reward / 10000n;
+        expect(await fundToken.balanceOf(addr2.getAddress())).to.be.closeTo(proposer2Reward
          + proposer2BalanceBeforePayout, epsilon);
 
         // check for the governor
-        expect(await fundToken.balanceOf(owner.getAddress())).to.closeTo
-        ((fTokenTotalSupplyBeforePayout * governorNumAccepted)
-         / (fundControllerConstants.initialPercentageFeeGovernors * totalAcceptedThisEpoch)
+        const governorReward = rewardPerAcceptanceGovernors * governorNumAccepted;
+        expect(await fundToken.balanceOf(owner.getAddress())).to.closeTo(governorReward
          + governorBalanceBeforePayout, epsilon);
 
     })
@@ -450,9 +458,9 @@ describe("Fund Integration Tests", function ()
 
         // save the balances before for testing
         const fTokenTotalSupplyBeforePayout = await fundToken.totalSupply();
-        const governorBalanceBeforePayout = await fundToken.balanceOf(owner.getAddress());
-        const proposer1BalanceBeforePayout = await fundToken.balanceOf(addr1.getAddress());
-        const proposer2BalanceBeforePayout = await fundToken.balanceOf(addr2.getAddress());
+        const governorBalanceBeforePayout = await fundToken.balanceOf(await owner.getAddress());
+        const proposer1BalanceBeforePayout = await fundToken.balanceOf(await addr1.getAddress());
+        const proposer2BalanceBeforePayout = await fundToken.balanceOf(await addr2.getAddress());
         const numEpochsPassedBeforeFirstPayout = 2n;
         const numEpochsPassedBeforeSecondPayout = 2n;
 
@@ -502,47 +510,47 @@ describe("Fund Integration Tests", function ()
         // realizeFundFees was called successfully. Governors get rewarded based on how many epochs
         // passed since the last PAYOUT Time
 
-        // the total rewards issued to the proposers during the first epoch
-        const totalRewardIssuedFirstActiveEpochToProposers = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeProposers);
-        // the total rewards issued to the governors during the first payout
-        const totalRewardIssuedFirstPayoutToGovernors = (fTokenTotalSupplyBeforePayout / fundControllerConstants.initialPercentageFeeGovernors) * 
-            numEpochsPassedBeforeFirstPayout;
+        const epochsPerYear = miscConstants.ONE_DAY * 365n / fundControllerConstants.initialEpochTime;
+        const exponent = 1 / Number(epochsPerYear);
+        const feePerEpochProposers = (1 + (Number(fundControllerConstants.initialPercentageFeeProposers) / (10 ** 18))) ** exponent;
+        const feePerEpochGovernors = (1 + (Number(fundControllerConstants.initialPercentageFeeGovernors) / (10 ** 18))) ** exponent;
+        const rewardPerAcceptanceProposersFirstEpoch = (BigInt(Number(fTokenTotalSupplyBeforePayout) * feePerEpochProposers) -
+                                                        fTokenTotalSupplyBeforePayout) / totalAcceptedFirstActiveEpoch;
+        const rewardPerAcceptanceGovernorsFirstEpoch = (BigInt(Number(fTokenTotalSupplyBeforePayout) * feePerEpochGovernors) -
+                                                        fTokenTotalSupplyBeforePayout) / totalAcceptedFirstActiveEpoch;
+        const fTokenTotalSupplyAfterFirstPayout = fTokenTotalSupplyBeforePayout +
+            (rewardPerAcceptanceProposersFirstEpoch * totalAcceptedFirstActiveEpoch) +
+            (rewardPerAcceptanceGovernorsFirstEpoch * totalAcceptedFirstActiveEpoch);
 
-        // the total rewards issued to both the proposers and the governors
-        const totalRewardIssuedFirstPayout = totalRewardIssuedFirstActiveEpochToProposers + totalRewardIssuedFirstPayoutToGovernors;
+        const rewardPerAcceptanceProposersSecondEpoch = (BigInt(Number(fTokenTotalSupplyAfterFirstPayout) * feePerEpochProposers) -
+                                                        fTokenTotalSupplyAfterFirstPayout) / totalAcceptedSecondActiveEpoch;
 
-        // the total supply after the first payout = initial supply + the total rewards issued during payout
-        const fTokenTotalSupplyAfterFirstPayout = fTokenTotalSupplyBeforePayout + totalRewardIssuedFirstPayout;
+        const proposer1Reward = ((rewardPerAcceptanceProposersFirstEpoch * proposer1NumAcceptedFirstActiveEpoch) +
+            (rewardPerAcceptanceProposersSecondEpoch * proposer1NumAcceptedSecondActiveEpoch));
+        const proposer2Reward = ((rewardPerAcceptanceProposersFirstEpoch * proposer2NumAcceptedFirstActiveEpoch) +
+            (rewardPerAcceptanceProposersSecondEpoch * proposer2NumAcceptedSecondActiveEpoch));
 
-        // the total rewards issued to the proposers during the second payout
-        const totalRewardIssuedSecondActiveEpochToProposers = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeProposers);
 
-        // the total rewards issued to the governors during the second payout
-        const totalRewardIssuedSecondPayoutToGovernors = (fTokenTotalSupplyAfterFirstPayout / fundControllerConstants.initialPercentageFeeGovernors) * 
-            numEpochsPassedBeforeSecondPayout;
-
-        // the reward for the proposer = (totalRewardIssuedToPropers1stEpoch *
-        // numYourAcceptedProposals1stEpoch / totalAcceptedProposals1stEpoch) + (totalRewardIssuedToPropers2ndEpoch *
-        // numYourAcceptedProposals2ndEpoch / totalAcceptedProposals2ndEpoch)
-        const proposer1Reward = ((totalRewardIssuedFirstActiveEpochToProposers * proposer1NumAcceptedFirstActiveEpoch)
-                                 / totalAcceptedFirstActiveEpoch) + ((totalRewardIssuedSecondActiveEpochToProposers *
-                                    proposer1NumAcceptedSecondActiveEpoch) / totalAcceptedSecondActiveEpoch);
-
-        const proposer2Reward = ((totalRewardIssuedFirstActiveEpochToProposers * proposer2NumAcceptedFirstActiveEpoch)
-                                 / totalAcceptedFirstActiveEpoch) + ((totalRewardIssuedSecondActiveEpochToProposers *
-                                    proposer2NumAcceptedSecondActiveEpoch) / totalAcceptedSecondActiveEpoch);
-
-        // this equation works because there is only one governor
-        const governorReward = totalRewardIssuedFirstPayoutToGovernors + totalRewardIssuedSecondPayoutToGovernors;
-
+        // governors get paid out for each epoch even if nothing happens during one of them
+        // get the reward for each payout and sum them together to get the governor reward
+        // NOTE: you need to subtract fTokenTotalSupply because the result of the fee multiplication is a value > 1
+        // We subtract this 1 and just leave the decimal which is the reward
+        const governorReward = (((BigInt(feePerEpochGovernors * Number(fTokenTotalSupplyBeforePayout)) -
+                                  fTokenTotalSupplyBeforePayout) * numEpochsPassedBeforeFirstPayout)) +
+                                  ((BigInt(feePerEpochGovernors * Number(fTokenTotalSupplyAfterFirstPayout)) -
+                                    fTokenTotalSupplyAfterFirstPayout) * numEpochsPassedBeforeSecondPayout);
         // check the balances of the proposers and governors after the payout
         // and make sure they got paidout correctly
-        expect(await fundToken.balanceOf(addr1.getAddress())).to.equal(
-            proposer1BalanceBeforePayout + proposer1Reward);
-        expect(await fundToken.balanceOf(addr2.getAddress())).to.equal(
-            proposer2BalanceBeforePayout + proposer2Reward);
-        expect(await fundToken.balanceOf(owner.getAddress())).to.equal(
-            governorBalanceBeforePayout + governorReward);
+
+        let epsilon = proposer1Reward / 10000n;
+        expect(await fundToken.balanceOf(addr1.getAddress())).to.be.closeTo(
+            proposer1BalanceBeforePayout + proposer1Reward, epsilon);
+        epsilon = proposer2Reward / 100000000n;
+        expect(await fundToken.balanceOf(addr2.getAddress())).to.be.closeTo(
+            proposer2BalanceBeforePayout + proposer2Reward, epsilon);
+        epsilon = governorReward / 10000n;
+        expect(await fundToken.balanceOf(owner.getAddress())).to.be.closeTo(
+            governorBalanceBeforePayout + governorReward, epsilon);
     })
 
 })

@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import "solady/src/utils/FixedPointMathLib.sol";
 import "./interfaces/IERC20Extended.sol";
 import "./interfaces/IFundToken.sol";
 import "./FundToken.sol";
@@ -30,14 +31,14 @@ contract FundController is Ownable
     uint256 public s_epochDuration;
     uint256 public s_epochExpirationTime;
 
-    // NOTE: These percentage values are reciprical
-    // meaning 1% would be 1/0.01 = 100
+    // Percentages are defined in WAD (1e18)
+    // e.g., 1% = 0.01e18 = 1e16
     uint256 public s_proposalPercentageReward;
     uint256 public s_governorPercentageReward;
 
-    uint256 constant public initialMintingRate = 10 ** 2;
-
-    uint256 public s_minToMint;
+    // This value is used to determine the amount of FundToken to mint
+    // when the fund is empty. We will define it to be 1 FundToken = $100
+    uint256 constant public initialFundTokenValue = 100e18;
 
     uint256[] public s_activeProposalIds;
 
@@ -79,12 +80,12 @@ contract FundController is Ownable
     function initialize(address _fundTokenAddress) external
     {
         s_IFundToken = IFundToken(_fundTokenAddress);
-        s_minToMint = 2 * 10 ** s_IFundToken.decimals() / initialMintingRate;
         latestProposalId = 1;
         s_epochExpirationTime = block.timestamp + s_epochDuration;
     }
 
     // setter functions for how the protocol opperates
+    // TODO: Require epoch duration results in perfectly divisbile epochs per year? Require it is less than 1 year?
     function setEpochTime(uint256 _epochTime) external onlyOwner
     { s_epochDuration = _epochTime; }
 
@@ -94,34 +95,50 @@ contract FundController is Ownable
     function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
     { s_governorPercentageReward = _percentage; }
 
-    function issueUsingStableCoin(uint256 _rawAmount) external
+    /// Get normalized USDC/USD price in fixed-point (1e18) format
+    function getUsdcPrice() internal view returns (uint256) {
+        (
+            , // roundId
+            int256 price, // answer
+            , // startedAt
+            uint256 updatedAt,
+            // answeredInRound
+        ) = usdcAggregator.latestRoundData();
+
+        require(updatedAt > 0 && price > 0, "Stale or invalid price");
+
+        return uint256(price) * (10 ** (18 - usdcAggregator.decimals()));
+    }
+
+    function issueUsingStableCoin(uint256 _USDCContributed) external
     {
         realizeFundFees();
         uint256 allowance = s_IUSDC.allowance(msg.sender, address(this));
-        require(allowance >= _rawAmount, "You must approve the contract to spend your USDC");
-        (, int256 dollarToUSDC, , ,) = usdcAggregator.latestRoundData();
-        uint256 dollarAmount = _rawAmount * uint256(dollarToUSDC) / 10 ** usdcAggregator.decimals();
+        require(allowance >= _USDCContributed, "You must approve the contract to spend your USDC");
+
+        uint256 usdcContributedInWAD = _USDCContributed * 10 ** (18 - s_IUSDC.decimals());
+
+        // NOTE: mulWad rounds down
+        uint256 dollarValue = FixedPointMathLib.mulWad(usdcContributedInWAD, getUsdcPrice());
 
         // this initial rate makes 1fToken = $100
-        uint256 unitConversionInitial = (10 ** (s_IFundToken.decimals() - s_IUSDC.decimals())) / initialMintingRate;
         uint256 amountToMint;
 
         // if this is the first time the fund token is being minted
         // base it off of the dollar amount such that 1 fund token = $100
         if (s_IFundToken.totalSupply() == 0)
         {
-            amountToMint = dollarAmount * unitConversionInitial;
+            amountToMint = FixedPointMathLib.divWad(dollarValue, initialFundTokenValue);
         }
-        // it is based on the total value
+        // otherwise mint such that the ratio of totalSupply to totalFundValue is preserved
         else
         {
-            amountToMint = (dollarAmount * s_IFundToken.totalSupply()) / s_IFundToken.getTotalValueOfFund();
-
+            amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue,
+                                                s_IFundToken.totalSupply()), s_IFundToken.getTotalValueOfFund());
         }
-        require(amountToMint > s_minToMint, "You must mint more than the minimum amount");
 
         // then perform the transfer from function
-        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawAmount);
+        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _USDCContributed);
 
         s_IFundToken.mint(msg.sender, amountToMint);
     }
@@ -138,13 +155,31 @@ contract FundController is Ownable
         for (uint256 i = 0; i < fundAssets.length; i++)
         {
             IERC20 assetToRedeem = fundAssets[i].token;
-            uint256 amountToRedeem = _rawFTokenToRedeem * assetToRedeem.balanceOf(address(s_IFundToken)) / s_IFundToken.totalSupply();
+            // TODO: confirm if we should be using mulWad here (do things break if assetToRedeem is not in WAD)
+            uint256 amountToRedeem = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(_rawFTokenToRedeem, assetToRedeem.balanceOf(address(s_IFundToken))), s_IFundToken.totalSupply());
             // transfer the asset to the user
             assetToRedeem.transferFrom(address(s_IFundToken), msg.sender, amountToRedeem);
         }
         // TODO: look into re-entry attack, should we burn before distributing the assets?
         // burn the fund tokens
         s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
+    }
+
+    // Computes: Per Epoch Fee=(1 + Annual Fee)**(1/N) − 1
+    // N = epochsPerYear
+    function perEpochFeePercentage(uint256 _annualFeePercentage) internal view returns (uint256)
+    {
+        // NOTE: not adjusted for years without exactly 365 days
+        uint256 epochsPerYear = 31_536_000 / s_epochDuration;
+
+        // 1 / epochsPerYear
+        uint256 exponent = FixedPointMathLib.divWad(1e18, epochsPerYear * 1e18);
+
+        // NOTE: powWad is an approximation according to docs
+        uint256 growthFactor = uint256(FixedPointMathLib.powWad(int256(1e18 + _annualFeePercentage), int256(exponent)));
+
+        // Subtract 1e18 to get just the fee
+        return growthFactor - 1e18;
     }
 
     function realizeFundFees() public
@@ -169,7 +204,11 @@ contract FundController is Ownable
             // for now, rewards are just based on the total number of accepted proposals
             uint256 acceptedProposalCount = proposer.acceptedProposals.length;
 
-            uint256 rewardForProposer = (totalSupply * acceptedProposalCount) / (s_proposalPercentageReward * totalAcceptedProposals);
+            // this needs to be Mul because the fee is in "decimal form" (meaning < 1e18)
+            // so you need to do mulWad 
+            uint256 rewardForProposer = FixedPointMathLib.mulWad(
+                FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18),
+                FixedPointMathLib.divWad(perEpochFeePercentage(s_proposalPercentageReward), totalAcceptedProposals * 1e18));
 
             // pay the proposer their reward
             s_IFundToken.mint(proposer.proposer, rewardForProposer);
@@ -181,7 +220,9 @@ contract FundController is Ownable
         for (uint256 i = 0; i < governors.length; i++)
         {
             address governor = governors[i];
-            uint256 rewardForGovernor = ((totalSupply / s_governorPercentageReward) * elapsedEpochs) / governors.length;
+            uint256 rewardForGovernor = FixedPointMathLib.divWad(
+                FixedPointMathLib.mulWad(FixedPointMathLib.mulWad(totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18),
+                governors.length * 1e18);
 
             s_IFundToken.mint(governor, rewardForGovernor);
         }

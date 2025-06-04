@@ -48,8 +48,6 @@ contract FundController is Ownable
     
     Proposer[] public successfulProposers;
 
-    address[] public governors;
-
     uint256 latestProposalId;
 
     IERC20Extended private s_IUSDC;
@@ -67,14 +65,6 @@ contract FundController is Ownable
         s_governorPercentageReward = _initialGovernorPercentageReward;
         s_IUSDC = IERC20Extended(_usdcAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
-
-        // Register the owner as the first governor
-        // Ownable can only have 1 owner at a given time
-        // Currently this means that the only way to accrue governors is to trasnfer
-        // ownership and then have them call registerGovernor()
-        // TODO: think about how we want to manage multiple governors
-        // - Probably should use Openzepplin Roles instead/in addition to Ownable
-        governors.push(msg.sender);
     }
 
     function initialize(address _fundTokenAddress) external
@@ -216,16 +206,12 @@ contract FundController is Ownable
         delete successfulProposers;
         totalAcceptedProposals = 0;
 
-        // payout Governors for all elapsed epochs since last payout
-        for (uint256 i = 0; i < governors.length; i++)
-        {
-            address governor = governors[i];
-            uint256 rewardForGovernor = FixedPointMathLib.divWad(
-                FixedPointMathLib.mulWad(FixedPointMathLib.mulWad(totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18),
-                governors.length * 1e18);
+        // payout Governor
+        address governor = owner();
+        uint256 rewardForGovernor = FixedPointMathLib.mulWad(FixedPointMathLib.mulWad(
+            totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18);
 
-            s_IFundToken.mint(governor, rewardForGovernor);
-        }
+        s_IFundToken.mint(governor, rewardForGovernor);
     }
 
     function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
@@ -326,16 +312,5 @@ contract FundController is Ownable
         successfulProposer.acceptedProposals.push(proposalToAccept);
         
         return amountOut;
-    }
-    function registerGovernor() external onlyOwner
-    {
-        for (uint256 i = 0; i < governors.length; i++)
-        {
-            if (msg.sender == governors[i])
-            {
-                return;
-            }
-        }
-        governors.push(msg.sender);
     }
 }

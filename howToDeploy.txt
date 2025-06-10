@@ -1,0 +1,1 @@
+npx hardhat ignition deploy ./ignition/modules/FundController.ts --network localhost

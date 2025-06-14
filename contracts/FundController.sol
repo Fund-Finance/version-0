@@ -81,7 +81,6 @@ contract FundController is Ownable
     }
 
     // setter functions for how the protocol opperates
-    // TODO: Require epoch duration results in perfectly divisbile epochs per year? Require it is less than 1 year?
     function setEpochDuration(uint256 _epochDuration) external onlyOwner
     {
         require(_epochDuration >= 60 * 60 * 24 && _epochDuration <= 60 * 60 * 24 * 365, "Epoch duration must be between 1 day and 1 year");
@@ -169,10 +168,10 @@ contract FundController is Ownable
     function perEpochFeePercentage(uint256 _annualFeePercentage) internal view returns (uint256)
     {
         // NOTE: not adjusted for years without exactly 365 days
-        uint256 epochsPerYear = 31_536_000 / s_epochDuration;
+        uint256 epochsPerYear = FixedPointMathLib.divWad(31_536_000 * 1e18, s_epochDuration * 1e18);
 
         // 1 / epochsPerYear
-        uint256 exponent = FixedPointMathLib.divWad(1e18, epochsPerYear * 1e18);
+        uint256 exponent = FixedPointMathLib.divWad(1e18, epochsPerYear);
 
         // NOTE: powWad is an approximation according to docs
         uint256 growthFactor = uint256(FixedPointMathLib.powWad(int256(1e18 + _annualFeePercentage), int256(exponent)));

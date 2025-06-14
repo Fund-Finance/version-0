@@ -104,7 +104,7 @@ describe("Fund Local Unit Tests", function ()
 
             // set the new epoch time to two days
             const newEpochTime = 2n * miscConstants.ONE_DAY;
-            await fundController.setEpochTime(newEpochTime);
+            await fundController.setEpochDuration(newEpochTime);
             // now check the new epoch time
             expect(await fundController.s_epochDuration()).to.equal(newEpochTime);
 

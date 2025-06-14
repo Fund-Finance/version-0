@@ -18,6 +18,8 @@ struct Proposal
     address assetToTrade;
     address assetToReceive;
     uint256 amountIn;
+    // Will be 0 until intentToAccept is called by the governor
+    uint256 approvalTimelockEnd;
 }
 
 struct Proposer
@@ -30,6 +32,10 @@ contract FundController is Ownable
 {
     uint256 public s_epochDuration;
     uint256 public s_epochExpirationTime;
+
+    // Harcoding to 1 day for now, but could make settable like epoch duration
+    // Although, unlike epoch duration we should not let governors change it
+    uint256 public s_proposalAcceptTimelockDuration = 86400;
 
     // Percentages are defined in WAD (1e18)
     // e.g., 1% = 0.01e18 = 1e16
@@ -240,7 +246,8 @@ contract FundController is Ownable
             msg.sender,
             _assetToTrade,
             _assetToReceive,
-            _amountIn);
+            _amountIn,
+            0);
         proposals[latestProposalId] = proposalToCreate;
         s_activeProposalIds.push(latestProposalId);
         latestProposalId++;
@@ -271,11 +278,19 @@ contract FundController is Ownable
         return index;
     }
 
+    function intentToAccept(uint256 proposalIdToAccept) external onlyOwner
+    {
+        Proposal storage proposalToAccept = proposals[proposalIdToAccept];
+        proposalToAccept.approvalTimelockEnd = block.timestamp + s_proposalAcceptTimelockDuration;
+    }
+
     function acceptProposal(uint256 proposalIdToAccept) external onlyOwner
         returns (uint256 amountOut)
     {
         realizeFundFees();
         Proposal memory proposalToAccept = proposals[proposalIdToAccept];
+        require(proposalToAccept.approvalTimelockEnd != 0, "This proposal isn't active or was never issued an intentToAccept");
+        require(block.timestamp > proposalToAccept.approvalTimelockEnd, "The timelock for this proposal has not ended");
         amountOut = s_IFundToken.swapAsset(
             proposalToAccept.assetToTrade,
             proposalToAccept.assetToReceive,

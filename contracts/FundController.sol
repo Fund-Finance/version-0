@@ -35,7 +35,7 @@ contract FundController is Ownable
 
     // Harcoding to 1 day for now, but could make settable like epoch duration
     // Although, unlike epoch duration we should not let governors change it
-    uint256 public s_proposalAcceptTimelockDuration = 86400;
+    uint256 public s_proposalAcceptTimelockDuration = 60 * 60 * 24;
 
     // Percentages are defined in WAD (1e18)
     // e.g., 1% = 0.01e18 = 1e16

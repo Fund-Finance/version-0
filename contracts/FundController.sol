@@ -83,7 +83,10 @@ contract FundController is Ownable
     // setter functions for how the protocol opperates
     // TODO: Require epoch duration results in perfectly divisbile epochs per year? Require it is less than 1 year?
     function setEpochTime(uint256 _epochTime) external onlyOwner
-    { s_epochDuration = _epochTime; }
+    {
+        require(_epochTime >= 60 * 60 * 24 && _epochTime <= 60 * 60 * 24 * 365, "Epoch duration must be between 1 day and 1 year");
+        s_epochDuration = _epochTime;
+    }
 
     function setProposalPercentageReward(uint256 _percentage) external onlyOwner
     { s_proposalPercentageReward = _percentage; }

@@ -28,6 +28,15 @@ struct Proposer
     Proposal[] acceptedProposals;
 }
 
+
+// Percentages are defined in WAD (1e18)
+// e.g., 1% = 0.01e18 = 1e16
+struct Fee {
+    uint256 feePercentage;
+    uint256 newFeePercentage;
+    uint256 newFeeTimeLockEnd;
+}
+
 contract FundController is Ownable
 {
     uint256 public s_epochDuration;
@@ -37,10 +46,11 @@ contract FundController is Ownable
     // Although, unlike epoch duration we should not let governors change it
     uint256 public s_proposalAcceptTimelockDuration = 60 * 60 * 24;
 
-    // Percentages are defined in WAD (1e18)
-    // e.g., 1% = 0.01e18 = 1e16
-    uint256 public s_proposalPercentageReward;
-    uint256 public s_governorPercentageReward;
+    // Harcoding to 30 days
+    uint256 public s_newFeeTimelockDuration = 60 * 60 * 24 * 30;
+
+    Fee public s_proposerPercentageReward;
+    Fee public s_governorPercentageReward;
 
     // This value is used to determine the amount of FundToken to mint
     // when the fund is empty. We will define it to be 1 FundToken = $100
@@ -61,14 +71,16 @@ contract FundController is Ownable
     IFundToken private s_IFundToken;
 
     constructor(uint256 _initialEpochTime,
-               uint256 _initialProposalPercentageReward,
+               uint256 _initialproposerPercentageReward,
                uint256 _initialGovernorPercentageReward,
                address _usdcAddress, address usdcAggregatorAddress)
                Ownable(msg.sender)
     {
         s_epochDuration = _initialEpochTime;
-        s_proposalPercentageReward = _initialProposalPercentageReward;
-        s_governorPercentageReward = _initialGovernorPercentageReward;
+
+        s_proposerPercentageReward.feePercentage = _initialproposerPercentageReward;
+        s_governorPercentageReward.feePercentage = _initialGovernorPercentageReward;
+
         s_IUSDC = IERC20Extended(_usdcAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
     }
@@ -87,11 +99,16 @@ contract FundController is Ownable
         s_epochDuration = _epochDuration;
     }
 
-    function setProposalPercentageReward(uint256 _percentage) external onlyOwner
-    { s_proposalPercentageReward = _percentage; }
+    function setFeePercentagesWad(uint256 proposerPercentage, uint256 _governorPercentage) external onlyOwner
+    {
+        require(_governorPercentage + proposerPercentage <= 2e16, "Total fund fees cannot exceed 2%");
 
-    function setGovernorPercentageReward(uint256 _percentage) external onlyOwner
-    { s_governorPercentageReward = _percentage; }
+        s_proposerPercentageReward.newFeePercentage = proposerPercentage;
+        s_proposerPercentageReward.newFeeTimeLockEnd = block.timestamp + s_newFeeTimelockDuration;
+        
+        s_governorPercentageReward.newFeePercentage = _governorPercentage;
+        s_governorPercentageReward.newFeeTimeLockEnd = block.timestamp + s_newFeeTimelockDuration;
+    }
 
     /// Get normalized USDC/USD price in fixed-point (1e18) format
     function getUsdcPrice() internal view returns (uint256) {
@@ -189,6 +206,24 @@ contract FundController is Ownable
             return;
         }
 
+        // update fees
+        if (block.timestamp >= s_proposerPercentageReward.newFeeTimeLockEnd)
+        {
+            s_proposerPercentageReward.feePercentage = s_proposerPercentageReward.newFeePercentage;
+            s_proposerPercentageReward.newFeeTimeLockEnd = 0;
+
+            // can be removed for optimzation, only included for readability
+            s_proposerPercentageReward.newFeePercentage = 0;
+        }
+        if (block.timestamp >= s_governorPercentageReward.newFeeTimeLockEnd)
+        {
+            s_governorPercentageReward.feePercentage = s_governorPercentageReward.newFeePercentage;
+            s_governorPercentageReward.newFeeTimeLockEnd = 0;
+
+            // can be removed for optimzation, only included for readability
+            s_governorPercentageReward.newFeePercentage = 0;
+        }
+
         // all payouts should be based on the supply before the payouts for this epoch
         uint256 totalSupply = s_IFundToken.totalSupply();
 
@@ -206,7 +241,7 @@ contract FundController is Ownable
             // so you need to do mulWad 
             uint256 rewardForProposer = FixedPointMathLib.mulWad(
                 FixedPointMathLib.mulWad(totalSupply, acceptedProposalCount * 1e18),
-                FixedPointMathLib.divWad(perEpochFeePercentage(s_proposalPercentageReward), totalAcceptedProposals * 1e18));
+                FixedPointMathLib.divWad(perEpochFeePercentage(s_proposerPercentageReward.feePercentage), totalAcceptedProposals * 1e18));
 
             // pay the proposer their reward
             s_IFundToken.mint(proposer.proposer, rewardForProposer);
@@ -217,7 +252,7 @@ contract FundController is Ownable
         // payout Governor
         address governor = owner();
         uint256 rewardForGovernor = FixedPointMathLib.mulWad(FixedPointMathLib.mulWad(
-            totalSupply, perEpochFeePercentage(s_governorPercentageReward)), elapsedEpochs * 1e18);
+            totalSupply, perEpochFeePercentage(s_governorPercentageReward.feePercentage)), elapsedEpochs * 1e18);
 
         s_IFundToken.mint(governor, rewardForGovernor);
     }

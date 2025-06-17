@@ -39,6 +39,8 @@ struct Fee {
 
 contract FundController is Ownable
 {
+    address[] public approvers;
+
     uint256 public s_epochDuration;
     uint256 public s_epochExpirationTime;
 
@@ -50,7 +52,7 @@ contract FundController is Ownable
     uint256 public s_newFeeTimelockDuration = 60 * 60 * 24 * 30;
 
     Fee public s_proposerPercentageReward;
-    Fee public s_governorPercentageReward;
+    Fee public s_approverPercentageReward;
 
     // This value is used to determine the amount of FundToken to mint
     // when the fund is empty. We will define it to be 1 FundToken = $100
@@ -72,17 +74,31 @@ contract FundController is Ownable
 
     constructor(uint256 _initialEpochTime,
                uint256 _initialproposerPercentageReward,
-               uint256 _initialGovernorPercentageReward,
+               uint256 _initialApproverPercentageReward,
                address _usdcAddress, address usdcAggregatorAddress)
                Ownable(msg.sender)
     {
         s_epochDuration = _initialEpochTime;
 
         s_proposerPercentageReward.feePercentage = _initialproposerPercentageReward;
-        s_governorPercentageReward.feePercentage = _initialGovernorPercentageReward;
+        s_approverPercentageReward.feePercentage = _initialApproverPercentageReward;
 
         s_IUSDC = IERC20Extended(_usdcAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
+    }
+
+    modifier onlyApprover()
+    {
+        bool allowed = false;
+        for (uint i = 0; i < approvers.length; i++) {
+            if (msg.sender == approvers[i])
+            {
+                allowed = true;
+                break;
+            }
+        }
+        require(allowed, "Sender is not an approver");
+        _;
     }
 
     function initialize(address _fundTokenAddress) external
@@ -93,21 +109,29 @@ contract FundController is Ownable
     }
 
     // setter functions for how the protocol opperates
+    // For now let's let the governor set the approvers at any point during the
+    // epoch. That gives them the discretion to choose when during the epoch to
+    // make changes
+    function setApproversList(address[] memory _newApprovers) external onlyApprover
+    {
+        approvers = _newApprovers;
+    }
+
     function setEpochDuration(uint256 _epochDuration) external onlyOwner
     {
         require(_epochDuration >= 60 * 60 * 24 && _epochDuration <= 60 * 60 * 24 * 365, "Epoch duration must be between 1 day and 1 year");
         s_epochDuration = _epochDuration;
     }
 
-    function setFeePercentagesWad(uint256 proposerPercentage, uint256 _governorPercentage) external onlyOwner
+    function setFeePercentagesWad(uint256 proposerPercentage, uint256 _approverPercentage) external onlyOwner
     {
-        require(_governorPercentage + proposerPercentage <= 2e16, "Total fund fees cannot exceed 2%");
+        require(_approverPercentage + proposerPercentage <= 2e16, "Total fund fees cannot exceed 2%");
 
         s_proposerPercentageReward.newFeePercentage = proposerPercentage;
         s_proposerPercentageReward.newFeeTimeLockEnd = block.timestamp + s_newFeeTimelockDuration;
         
-        s_governorPercentageReward.newFeePercentage = _governorPercentage;
-        s_governorPercentageReward.newFeeTimeLockEnd = block.timestamp + s_newFeeTimelockDuration;
+        s_approverPercentageReward.newFeePercentage = _approverPercentage;
+        s_approverPercentageReward.newFeeTimeLockEnd = block.timestamp + s_newFeeTimelockDuration;
     }
 
     /// Get normalized USDC/USD price in fixed-point (1e18) format
@@ -215,13 +239,13 @@ contract FundController is Ownable
             // can be removed for optimzation, only included for readability
             s_proposerPercentageReward.newFeePercentage = 0;
         }
-        if (block.timestamp >= s_governorPercentageReward.newFeeTimeLockEnd)
+        if (block.timestamp >= s_approverPercentageReward.newFeeTimeLockEnd)
         {
-            s_governorPercentageReward.feePercentage = s_governorPercentageReward.newFeePercentage;
-            s_governorPercentageReward.newFeeTimeLockEnd = 0;
+            s_approverPercentageReward.feePercentage = s_approverPercentageReward.newFeePercentage;
+            s_approverPercentageReward.newFeeTimeLockEnd = 0;
 
             // can be removed for optimzation, only included for readability
-            s_governorPercentageReward.newFeePercentage = 0;
+            s_approverPercentageReward.newFeePercentage = 0;
         }
 
         // all payouts should be based on the supply before the payouts for this epoch
@@ -249,12 +273,13 @@ contract FundController is Ownable
         delete successfulProposers;
         totalAcceptedProposals = 0;
 
-        // payout Governor
-        address governor = owner();
-        uint256 rewardForGovernor = FixedPointMathLib.mulWad(FixedPointMathLib.mulWad(
-            totalSupply, perEpochFeePercentage(s_governorPercentageReward.feePercentage)), elapsedEpochs * 1e18);
-
-        s_IFundToken.mint(governor, rewardForGovernor);
+        // payout Approvers
+        uint256 rewardPerApprover = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(totalSupply, s_approverPercentageReward.feePercentage), approvers.length);
+        for(uint256 i = 0; i < approvers.length; i++)
+        {
+            // pay the Approver their reward
+            s_IFundToken.mint(approvers[i], rewardPerApprover);
+        }
     }
 
     function addAssetToFund(address _assetAddress, address _aggregatorAddress) external onlyOwner
@@ -315,13 +340,13 @@ contract FundController is Ownable
         return index;
     }
 
-    function intentToAccept(uint256 proposalIdToAccept) external onlyOwner
+    function intentToAccept(uint256 proposalIdToAccept) external onlyApprover
     {
         Proposal storage proposalToAccept = proposals[proposalIdToAccept];
         proposalToAccept.approvalTimelockEnd = block.timestamp + s_proposalAcceptTimelockDuration;
     }
 
-    function acceptProposal(uint256 proposalIdToAccept) external onlyOwner
+    function acceptProposal(uint256 proposalIdToAccept) external onlyApprover
         returns (uint256 amountOut)
     {
         realizeFundFees();

@@ -17,7 +17,9 @@ const FundFinanceModule = buildModule("FundFinanceModule", (m) => {
                                 initialGovernorPercentageReward, usdcAddress,
                                 usdcAggregatorAddress]);
   const fundToken = m.contract("FundToken", [fundController, usdcAddress,
-  usdcAggregatorAddress, uniswapRouterAddress]);; 
+  usdcAggregatorAddress, uniswapRouterAddress]); 
+
+  m.call(fundController, "initialize", [fundToken]);
 
   return { fundController, fundToken };
 });

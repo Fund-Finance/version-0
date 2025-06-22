@@ -70,3 +70,11 @@
 - Major cleanup of the smart contracts and the test cases
 - overhaul of payout logic complete and accomplishes the task in a more efficient way
 - governors now get paid out each epoch even if no proposal was voted on
+
+### v0.4.2:
+- Switched to Fixed-Point math
+- Updated to have a board of approvers which review and approve proposals
+- Added an intent-to-approve (timelock) functionality
+- Added deploy scripts to begin testing the front-end
+- Added logic to derive per epoch fee from annual fee
+- Updated the main contracts to use nat-spec comments

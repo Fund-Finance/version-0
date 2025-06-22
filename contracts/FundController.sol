@@ -46,10 +46,10 @@ contract FundController is Ownable
 
     // Harcoding to 1 day for now, but could make settable like epoch duration
     // Although, unlike epoch duration we should not let governors change it
-    uint256 public s_proposalAcceptTimelockDuration = 60 * 60 * 24;
+    uint256 public s_proposalAcceptTimelockDuration = 0;
 
     // Harcoding to 30 days
-    uint256 public s_newFeeTimelockDuration = 60 * 60 * 24 * 30;
+    uint256 public s_newFeeTimelockDuration = 0;
 
     Fee public s_proposerPercentageReward;
     Fee public s_approverPercentageReward;
@@ -85,6 +85,8 @@ contract FundController is Ownable
 
         s_IUSDC = IERC20Extended(_usdcAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
+        // TODO: Remove this
+        approvers.push(msg.sender); // Add the contract deployer as an approver
     }
 
     modifier onlyApprover()
@@ -351,8 +353,8 @@ contract FundController is Ownable
     {
         realizeFundFees();
         Proposal memory proposalToAccept = proposals[proposalIdToAccept];
-        require(proposalToAccept.approvalTimelockEnd != 0, "This proposal isn't active or was never issued an intentToAccept");
-        require(block.timestamp > proposalToAccept.approvalTimelockEnd, "The timelock for this proposal has not ended");
+        // require(proposalToAccept.approvalTimelockEnd != 0, "This proposal isn't active or was never issued an intentToAccept");
+        // require(block.timestamp > proposalToAccept.approvalTimelockEnd, "The timelock for this proposal has not ended");
         amountOut = s_IFundToken.swapAsset(
             proposalToAccept.assetToTrade,
             proposalToAccept.assetToReceive,

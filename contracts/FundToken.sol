@@ -74,6 +74,28 @@ contract FundToken is ERC20, Ownable
         return totalValue;
     }
 
+    // TODO: come up with a better way of writting this function
+    function getValueOfAssetInFund(address _asset) external view returns (uint256)
+    {
+        for(uint256 i = 0; i < s_supportedAssets.length; i++)
+        {
+            if(address(s_supportedAssets[i].token) == _asset)
+            {
+                (,
+                 int256 answer,
+                ,
+                ,
+                ) = s_supportedAssets[i].aggregator.latestRoundData();
+                uint256 assetPrice = uint256(answer) * (10 ** (18 - s_supportedAssets[i].aggregator.decimals()));
+                uint256 tokenPrice = s_supportedAssets[i].token.balanceOf(address(this))
+                    * (10 ** (18 - s_supportedAssets[i].token.decimals()));
+                return FixedPointMathLib.mulWad(assetPrice, tokenPrice);
+
+            }
+        }
+
+    }
+
     function getAssets() external view returns (asset[] memory)
     {
         return s_supportedAssets;

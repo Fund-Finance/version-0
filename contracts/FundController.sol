@@ -247,7 +247,7 @@ contract FundController is Ownable
         // for now we will redeem assets by giving the user
         // his proportional share of each underlying asset of the fund
 
-        asset[] memory fundAssets = s_IFundToken.getAssets();
+        Asset[] memory fundAssets = s_IFundToken.getAssets();
         for (uint256 i = 0; i < fundAssets.length; i++)
         {
             IERC20 assetToRedeem = fundAssets[i].token;

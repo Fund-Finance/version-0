@@ -1,5 +1,7 @@
 # version-0
 
+- For the corresponding front-end see [version-0-front-end](https://github.com/Fund-Finance/verson-0-front-end)
+
 ## To Install:
 1) Clone this repository and cd into it
 2) Run `npm install` to install all of the project dependencies

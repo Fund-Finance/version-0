@@ -327,6 +327,23 @@ contract FundController is Ownable
         return activeProposals;
     }
 
+    function getProposalById(uint256 id) external view returns(Proposal memory proposal)
+    {
+        console.log("Looking for Id: %s", id);
+        for(uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            if (s_activeProposalIds[i] == id)
+            {
+                console.log("Found Id: %s", id);
+                console.log("Proposals length: %s", s_activeProposalIds.length);
+                proposal = proposals[s_activeProposalIds[i]];
+                return proposal;
+            }
+        }
+        console.log("Proposal with ID %s does not exist", id);
+        revert("Proposal with the given ID does not exist");
+    }
+
     // Returns the index of the proposer in successfulProposers or returns -1 if they aren't
     // a successful proposer
     function checkIsSuccessfulProposer(address _proposer) public view returns (int256 index)

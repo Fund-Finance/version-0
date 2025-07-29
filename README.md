@@ -1,5 +1,7 @@
 # version-0
 
+- For the corresponding front-end see [version-0-front-end](https://github.com/Fund-Finance/verson-0-front-end)
+
 ## To Install:
 1) Clone this repository and cd into it
 2) Run `npm install` to install all of the project dependencies
@@ -70,3 +72,11 @@
 - Major cleanup of the smart contracts and the test cases
 - overhaul of payout logic complete and accomplishes the task in a more efficient way
 - governors now get paid out each epoch even if no proposal was voted on
+
+### v0.4.2:
+- Switched to Fixed-Point math
+- Updated to have a board of approvers which review and approve proposals
+- Added an intent-to-approve (timelock) functionality
+- Added deploy scripts to begin testing the front-end
+- Added logic to derive per epoch fee from annual fee
+- Updated the main contracts to use nat-spec comments

@@ -36,6 +36,10 @@ async function main() {
 
     // add the assets to the fund:
 
+    const originalProposalAcceptTimelockDuration = await fundController.s_proposalAcceptTimelockDuration();
+
+    await fundController.connect(owner).setProposalAcceptTimelockDuration(0n);
+
     await fundController.addAssetToFund(await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
     await fundController.addAssetToFund(await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
 
@@ -45,11 +49,15 @@ async function main() {
     const amountToSpendProposal2_usdc = 100_000n;
     await fundController.connect(addr1).createProposal(await usdc.getAddress(), await cbBTC.getAddress(), amountToSpendProposal2_usdc * 10n ** await usdc.decimals());
 
+    await fundController.connect(owner).intentToAccept(1n);
+    await fundController.connect(owner).intentToAccept(2n);
 
     await fundController.connect(owner).acceptProposal(1n);
     console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
     await fundController.connect(owner).acceptProposal(2n);
     console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+    
+    await fundController.connect(owner).setProposalAcceptTimelockDuration(originalProposalAcceptTimelockDuration);
 
     const usdcRealBalance = Number(await usdc.balanceOf(await fundToken.getAddress())) / Number(10n ** await usdc.decimals());
     const wETHRealBalance = Number(await wETH.balanceOf(await fundToken.getAddress())) / Number(10n ** await wETH.decimals());

@@ -43,7 +43,7 @@ async function main() {
     await fundController.addAssetToFund(await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
     await fundController.addAssetToFund(await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
 
-    const amountToSpendProposal1_usdc = 2_000n;
+    const amountToSpendProposal1_usdc = 50_000n;
     await fundController.connect(addr1).createProposal(await usdc.getAddress(), await wETH.getAddress(), amountToSpendProposal1_usdc * 10n ** await usdc.decimals());
 
     const amountToSpendProposal2_usdc = 100_000n;

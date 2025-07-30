@@ -13,6 +13,7 @@ interface IFundToken is IERC20Extended
     function s_supportedAssets() external view returns (Asset[] memory);
     function addAsset(address _assetAddress, address _aggregatorAddress) external;
     function getTotalValueOfFund() external view returns (uint256);
+    function getValueOfAssetInFund(address _asset) external view returns (uint256);
 
     function getAssets() external view returns (Asset[] memory);
 

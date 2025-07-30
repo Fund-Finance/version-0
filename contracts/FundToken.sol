@@ -138,7 +138,8 @@ contract FundToken is ERC20, Ownable
 
             }
         }
-
+        // Return 0 if asset is not found
+        return 0;
     }
 
     /// @notice Gets the list of supported assets in the fund token

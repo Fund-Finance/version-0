@@ -17,11 +17,13 @@ async function main() {
 
     const { owner, addr1, cbBTC, wETH, usdc, usdcAggregator } = await loadFixture(contractDeploymentForkedFixture);
 
+    const amountToApprove_usdc = 100_000_000n; // 100 million USDC
+
     const amountToSpend_usdc = 200_000n;
 
     // mint
     await usdc.connect(owner).approve(await fundController.getAddress(),
-        amountToSpend_usdc * 10n ** await usdc.decimals());
+        amountToApprove_usdc * 10n ** await usdc.decimals());
         
     await fundController.connect(owner).
         issueUsingStableCoin(amountToSpend_usdc * 10n ** await usdc.decimals());
@@ -30,21 +32,32 @@ async function main() {
 
     console.log("FundToken total supply: ", await fundToken.totalSupply());
     console.log("FundToken balance of owner: ", await fundToken.balanceOf(await owner.getAddress()));
+    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
 
     // add the assets to the fund:
+
+    const originalProposalAcceptTimelockDuration = await fundController.s_proposalAcceptTimelockDuration();
+
+    await fundController.connect(owner).setProposalAcceptTimelockDuration(0n);
 
     await fundController.addAssetToFund(await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
     await fundController.addAssetToFund(await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
 
-    const amountToSpendProposal1_usdc = 2_000n;
+    const amountToSpendProposal1_usdc = 50_000n;
     await fundController.connect(addr1).createProposal(await usdc.getAddress(), await wETH.getAddress(), amountToSpendProposal1_usdc * 10n ** await usdc.decimals());
 
     const amountToSpendProposal2_usdc = 100_000n;
     await fundController.connect(addr1).createProposal(await usdc.getAddress(), await cbBTC.getAddress(), amountToSpendProposal2_usdc * 10n ** await usdc.decimals());
 
+    await fundController.connect(owner).intentToAccept(1n);
+    await fundController.connect(owner).intentToAccept(2n);
 
     await fundController.connect(owner).acceptProposal(1n);
+    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
     await fundController.connect(owner).acceptProposal(2n);
+    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+    
+    await fundController.connect(owner).setProposalAcceptTimelockDuration(originalProposalAcceptTimelockDuration);
 
     const usdcRealBalance = Number(await usdc.balanceOf(await fundToken.getAddress())) / Number(10n ** await usdc.decimals());
     const wETHRealBalance = Number(await wETH.balanceOf(await fundToken.getAddress())) / Number(10n ** await wETH.decimals());
@@ -53,6 +66,16 @@ async function main() {
     console.log("Usdc that the fund has after proposals: ", usdcRealBalance);
     console.log("wETH balance of the fund: ", wETHRealBalance);
     console.log("cbBTC balance of the fund: ", cbBTCRealBalance);
+
+    console.log("The owner has usdc: ", Number(await usdc.balanceOf(await owner.getAddress())) / Number(10n ** await usdc.decimals()));
+
+    console.log("owner address: ", await owner.getAddress());
+
+    // the total value of the fund decreases with each trade due to fees
+    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+
+    console.log()
+    console.log("USDC allowance for fund controller: ", await usdc.allowance(await owner.getAddress(), await fundController.getAddress()));
 
 }
 

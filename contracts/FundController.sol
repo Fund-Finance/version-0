@@ -134,6 +134,8 @@ contract FundController is Ownable
 
         s_IUSDC = IERC20Extended(_usdcAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
+        // TODO: Remove this
+        s_approvers.push(msg.sender); // Add the contract deployer as an approver
     }
 
     /************** Modifiers ***************/
@@ -174,6 +176,14 @@ contract FundController is Ownable
         s_approvers = _newApprovers;
     }
 
+    /// @notice Sets the duration of the timelock for accepting a proposal
+    /// @dev This function can only be called by the owner of the contract
+    /// @param _proposalAcceptTimelockDuration The new duration of the timelock in seconds
+    function setProposalAcceptTimelockDuration(uint256 _proposalAcceptTimelockDuration) external onlyOwner
+    {
+        s_proposalAcceptTimelockDuration = _proposalAcceptTimelockDuration;
+    }
+
     /// @notice Sets the duration of an epoch
     /// @dev This function can only be called by the owner of the contract
     /// @dev The epoch duration must be between 1 day and 1 year otherwise it will revert
@@ -203,6 +213,7 @@ contract FundController is Ownable
 
     /// @notice Issues new FundTokens to the user based on the amount of USDC contributed
     /// @dev USDC is assumed to be in 6 decimal format, so we convert it to WAD (1e18) format
+    /// @dev The USDC contribution is distributed proportionally across the fund's existing assets
     /// @param _rawUSDCContributed The raw amount of USDC contributed by the user in 10^6 format
     function issueUsingStableCoin(uint256 _rawUSDCContributed) external
     {
@@ -223,16 +234,62 @@ contract FundController is Ownable
         if (s_IFundToken.totalSupply() == 0)
         {
             amountToMint = FixedPointMathLib.divWad(dollarValue, s_initialFundTokenValue);
+            // For first contribution, just add USDC to the fund
+            s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
         }
-        // otherwise mint such that the ratio of totalSupply to totalFundValue is preserved
+        // otherwise distribute the contribution proportionally across existing assets
         else
         {
+            // Get current fund assets and their values
+            Asset[] memory fundAssets = s_IFundToken.getAssets();
+            uint256 totalFundValueBeforeInvestment = s_IFundToken.getTotalValueOfFund();
+            
+            // Transfer USDC to the fund first
+            s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
+            
+            // Distribute the contribution proportionally across all assets except USDC
+            for (uint256 i = 0; i < fundAssets.length; i++)
+            {
+                // Skip USDC (first asset) as we don't want to swap USDC for USDC
+                if (i == 0) continue;
+                
+                // Get the current value of this asset in the fund
+                uint256 assetValue = s_IFundToken.getValueOfAssetInFund(address(fundAssets[i].token));
+                
+                // Calculate what proportion of the contribution should go to this asset
+                uint256 proportionOfContribution = FixedPointMathLib.divWad(
+                    FixedPointMathLib.mulWad(dollarValue, assetValue),
+                    totalFundValueBeforeInvestment
+                );
+                
+                // Convert the dollar proportion back to USDC amount
+                uint256 usdcAmountForAsset = FixedPointMathLib.divWad(
+                    proportionOfContribution,
+                    getUsdcPrice()
+                );
+                
+                // Convert from WAD back to USDC decimals
+                uint256 usdcAmountInAssetDecimals = usdcAmountForAsset / 10 ** (18 - s_IUSDC.decimals());
+                
+                // Only swap if there's a meaningful amount to swap
+                if (usdcAmountInAssetDecimals > 0)
+                {
+                    // Swap USDC for this asset
+                    s_IFundToken.swapAsset(
+                        address(s_IUSDC),
+                        address(fundAssets[i].token),
+                        usdcAmountInAssetDecimals
+                    );
+                }
+            }
+            
+            // Calculate the amount of FundTokens to mint based on the total value
+            console.log("dollarValue: %s", dollarValue);
+            console.log("Total Supply: %s", s_IFundToken.totalSupply());
+            console.log("Total Value of Fund: %s", totalFundValueBeforeInvestment);
             amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue,
-                                                s_IFundToken.totalSupply()), s_IFundToken.getTotalValueOfFund());
+                                                s_IFundToken.totalSupply()), totalFundValueBeforeInvestment);
         }
-
-        // then perform the transfer from function
-        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
 
         s_IFundToken.mint(msg.sender, amountToMint);
     }
@@ -362,6 +419,23 @@ contract FundController is Ownable
             activeProposals[i] = s_proposals[s_activeProposalIds[i]];
         }
         return activeProposals;
+    }
+
+    function getProposalById(uint256 id) external view returns(Proposal memory proposal)
+    {
+        console.log("Looking for Id: %s", id);
+        for(uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            if (s_activeProposalIds[i] == id)
+            {
+                console.log("Found Id: %s", id);
+                console.log("Proposals length: %s", s_activeProposalIds.length);
+                proposal = s_proposals[s_activeProposalIds[i]];
+                return proposal;
+            }
+        }
+        console.log("Proposal with ID %s does not exist", id);
+        revert("Proposal with the given ID does not exist");
     }
 
     /************** Public Functions ***************/
@@ -500,4 +574,6 @@ contract FundController is Ownable
         // Subtract 1e18 to get just the fee
         return growthFactor - 1e18;
     }
+
+
 }

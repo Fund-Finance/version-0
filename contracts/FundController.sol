@@ -248,11 +248,9 @@ contract FundController is Ownable
             s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
             
             // Distribute the contribution proportionally across all assets except USDC
-            for (uint256 i = 0; i < fundAssets.length; i++)
+            // Skip USDC (first asset) as we don't want to swap USDC for USDC
+            for (uint256 i = 1; i < fundAssets.length; i++)
             {
-                // Skip USDC (first asset) as we don't want to swap USDC for USDC
-                if (i == 0) continue;
-                
                 // Get the current value of this asset in the fund
                 uint256 assetValue = s_IFundToken.getValueOfAssetInFund(address(fundAssets[i].token));
                 
@@ -284,9 +282,6 @@ contract FundController is Ownable
             }
             
             // Calculate the amount of FundTokens to mint based on the total value
-            console.log("dollarValue: %s", dollarValue);
-            console.log("Total Supply: %s", s_IFundToken.totalSupply());
-            console.log("Total Value of Fund: %s", totalFundValueBeforeInvestment);
             amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue,
                                                 s_IFundToken.totalSupply()), totalFundValueBeforeInvestment);
         }
@@ -294,30 +289,51 @@ contract FundController is Ownable
         s_IFundToken.mint(msg.sender, amountToMint);
     }
 
-    /// @notice Redeems the user's FundTokens for their proportional share of the fund's assets
+    /// @notice Redeems the user's FundTokens for USDC by selling their proportional share of the fund's assets
     /// @param _rawFTokenToRedeem The amount of FundTokens to redeem in WAD (1e18) format
-    function redeemAssets(uint256 _rawFTokenToRedeem) external
+    /// @return totalUsdcReceived The total amount of USDC received from selling the assets
+    function redeemAssets(uint256 _rawFTokenToRedeem) external returns (uint256 totalUsdcReceived)
     {
         realizeFundFees();
-        // redeem the assets first
         require(s_IFundToken.balanceOf(msg.sender) >= _rawFTokenToRedeem, "You do not have enough FUND tokens to redeem");
-        // for now we will redeem assets by giving the user
-        // his proportional share of each underlying asset of the fund
-
+        
+        totalUsdcReceived = 0;
         Asset[] memory fundAssets = s_IFundToken.getAssets();
+        
+        // Sell each asset for USDC and accumulate the total
         for (uint256 i = 0; i < fundAssets.length; i++)
         {
             IERC20 assetToRedeem = fundAssets[i].token;
-            // TODO: confirm if we should be using mulWad here (do things break if assetToRedeem is not in WAD)
+            
+            // Calculate the user's proportional share of this asset
             uint256 amountToRedeem = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(
                 _rawFTokenToRedeem, assetToRedeem.balanceOf(address(s_IFundToken))),
                 s_IFundToken.totalSupply());
-            // transfer the asset to the user
-            assetToRedeem.transferFrom(address(s_IFundToken), msg.sender, amountToRedeem);
+            
+            // If this is USDC, just add it to the total
+            if (address(assetToRedeem) == address(s_IUSDC))
+            {
+                totalUsdcReceived += amountToRedeem;
+            }
+            // Otherwise, swap the asset for USDC
+            else if (amountToRedeem > 0)
+            {
+                uint256 usdcReceived = s_IFundToken.swapAsset(
+                    address(assetToRedeem),
+                    address(s_IUSDC),
+                    amountToRedeem
+                );
+                totalUsdcReceived += usdcReceived;
+            }
         }
-        // TODO: look into re-entry attack, should we burn before distributing the assets?
-        // burn the fund tokens
+        
+        // Transfer the total USDC to the user
+        s_IUSDC.transferFrom(address(s_IFundToken), msg.sender, totalUsdcReceived);
+        
+        // Burn the fund tokens
         s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
+        
+        return totalUsdcReceived;
     }
 
     /// @notice Adds a new asset to the fund which can be traded

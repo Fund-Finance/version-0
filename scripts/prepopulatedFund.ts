@@ -24,6 +24,9 @@ async function main() {
     // mint
     await usdc.connect(owner).approve(await fundController.getAddress(),
         amountToApprove_usdc * 10n ** await usdc.decimals());
+
+    await usdc.connect(addr1).approve(await fundController.getAddress(),
+        amountToApprove_usdc * 10n ** await usdc.decimals());
         
     await fundController.connect(owner).
         issueUsingStableCoin(amountToSpend_usdc * 10n ** await usdc.decimals());

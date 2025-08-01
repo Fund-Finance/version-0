@@ -41,9 +41,9 @@ struct Proposal
 {
     uint256 id;
     address proposer;
-    address assetToTrade;
-    address assetToReceive;
-    uint256 amountIn;
+    address[] assetsToTrade;
+    address[] assetsToReceive;
+    uint256[] amountsIn;
     // Will be 0 until intentToAccept is called by the governor
     uint256 approvalTimelockEnd;
 }
@@ -346,17 +346,19 @@ contract FundController is Ownable
     }
 
     /// @notice Creates a new proposal for trading assets in the fund
-    /// @param _assetToTrade The address of the asset to trade
-    /// @param _assetToReceive The address of the asset to receive in return
-    /// @param _amountIn The amount of the asset to trade in WAD (1e18) format
-    function createProposal(address _assetToTrade, address _assetToReceive, uint256 _amountIn) external
+    /// @param _assetsToTrade The address of the assets to trade
+    /// @param _assetsToReceive The address of the assets to receive in return
+    /// @param _amountsIn The amounts of each asset to trade in WAD (1e18) format
+    function createProposal(address[] memory _assetsToTrade,
+                            address[] memory _assetsToReceive,
+                            uint256[] memory _amountsIn) external
     {
         Proposal memory proposalToCreate = Proposal(
             s_latestProposalId,
             msg.sender,
-            _assetToTrade,
-            _assetToReceive,
-            _amountIn,
+            _assetsToTrade,
+            _assetsToReceive,
+            _amountsIn,
             0);
         s_proposals[s_latestProposalId] = proposalToCreate;
         s_activeProposalIds.push(s_latestProposalId);
@@ -376,9 +378,9 @@ contract FundController is Ownable
     /// @dev This function can only be called by the approvers of the fund
     /// @dev This function can only be called once the timelock for the proposal has ended
     /// @param proposalIdToAccept The ID of the proposal to accept
-    /// @return amountOut The amount of the asset received in return for the trade
+    /// @return amountsOut The amount of the asset received in return for the trade
     function acceptProposal(uint256 proposalIdToAccept) external onlyApprover
-        returns (uint256 amountOut)
+        returns (uint256[] memory amountsOut)
     {
         realizeFundFees();
         Proposal memory proposalToAccept = s_proposals[proposalIdToAccept];
@@ -386,10 +388,14 @@ contract FundController is Ownable
         require(proposalToAccept.approvalTimelockEnd != 0, "This proposal isn't active or was never issued an intentToAccept");
         require(block.timestamp > proposalToAccept.approvalTimelockEnd, "The timelock for this proposal has not ended");
 
-        amountOut = s_IFundToken.swapAsset(
-            proposalToAccept.assetToTrade,
-            proposalToAccept.assetToReceive,
-            proposalToAccept.amountIn);
+        amountsOut = new uint256[](proposalToAccept.assetsToTrade.length);
+        for(uint256 i = 0; i < proposalToAccept.assetsToTrade.length; i++)
+        {
+            amountsOut[i] = s_IFundToken.swapAsset(
+                proposalToAccept.assetsToTrade[i],
+                proposalToAccept.assetsToReceive[i],
+                proposalToAccept.amountsIn[i]);
+        }
 
         for (uint256 i = 0; i < s_activeProposalIds.length; i++)
         {
@@ -422,7 +428,7 @@ contract FundController is Ownable
         }
         successfulProposer.acceptedProposals.push(proposalToAccept);
         
-        return amountOut;
+        return amountsOut;
     }
 
     /// @notice Gets the list of active proposals

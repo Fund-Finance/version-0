@@ -18,5 +18,6 @@ interface IFundToken is IERC20Extended
     function getAssets() external view returns (Asset[] memory);
 
     function swapAsset(address _assetToTrade,
-        address _assetToGet, uint256 _amountIn) external returns (uint256);
+        address _assetToGet, uint256 _amountIn,
+        uint256 _minAmountToReceive) external returns (uint256);
 }

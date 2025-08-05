@@ -154,8 +154,9 @@ contract FundToken is ERC20, Ownable
     /// @param _assetToTrade The address of the asset to trade (e.g., USDC)
     /// @param _assetToGet The address of the asset to get (e.g., WETH)
     /// @param _amountIn The amount of the asset to trade
+    /// @param _minAmountToReceive The minimum amount of the asset to get to receive (slippage protection)
     /// @return amountOut The amount of the asset received from the swap
-    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
+    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn, uint256 _minAmountToReceive) external onlyOwner
         returns (uint256 amountOut)
     {
         TransferHelper.safeApprove(_assetToTrade, address(s_swapRouter), _amountIn); 
@@ -168,7 +169,7 @@ contract FundToken is ERC20, Ownable
                 recipient: address(this),
                 // deadline: block.timestamp,
                 amountIn: _amountIn,
-                amountOutMinimum: 0,
+                amountOutMinimum: _minAmountToReceive,
                 sqrtPriceLimitX96: 0
             });
         amountOut = s_swapRouter.exactInputSingle(params);

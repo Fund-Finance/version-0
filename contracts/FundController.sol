@@ -44,6 +44,7 @@ struct Proposal
     address[] assetsToTrade;
     address[] assetsToReceive;
     uint256[] amountsIn;
+    uint256[] minAmountsToReceive;
     // Will be 0 until intentToAccept is called by the governor
     uint256 approvalTimelockEnd;
 }
@@ -273,10 +274,12 @@ contract FundController is Ownable
                 if (usdcAmountInAssetDecimals > 0)
                 {
                     // Swap USDC for this asset
+                    // TODO: Add a minimum to receive
                     s_IFundToken.swapAsset(
                         address(s_IUSDC),
                         address(fundAssets[i].token),
-                        usdcAmountInAssetDecimals
+                        usdcAmountInAssetDecimals,
+                        0
                     );
                 }
             }
@@ -318,10 +321,12 @@ contract FundController is Ownable
             // Otherwise, swap the asset for USDC
             else if (amountToRedeem > 0)
             {
+                // TODO: Add a minimum to receive
                 uint256 usdcReceived = s_IFundToken.swapAsset(
                     address(assetToRedeem),
                     address(s_IUSDC),
-                    amountToRedeem
+                    amountToRedeem,
+                    0
                 );
                 totalUsdcReceived += usdcReceived;
             }
@@ -349,9 +354,11 @@ contract FundController is Ownable
     /// @param _assetsToTrade The address of the assets to trade
     /// @param _assetsToReceive The address of the assets to receive in return
     /// @param _amountsIn The amounts of each asset to trade in WAD (1e18) format
+    /// @param _minAmountsToReceive The minimum amounts of each asset to receive in WAD (1e18) format
     function createProposal(address[] memory _assetsToTrade,
                             address[] memory _assetsToReceive,
-                            uint256[] memory _amountsIn) external
+                            uint256[] memory _amountsIn,
+                            uint256[] memory _minAmountsToReceive) external
     {
         Proposal memory proposalToCreate = Proposal(
             s_latestProposalId,
@@ -359,6 +366,7 @@ contract FundController is Ownable
             _assetsToTrade,
             _assetsToReceive,
             _amountsIn,
+            _minAmountsToReceive,
             0);
         s_proposals[s_latestProposalId] = proposalToCreate;
         s_activeProposalIds.push(s_latestProposalId);
@@ -394,7 +402,8 @@ contract FundController is Ownable
             amountsOut[i] = s_IFundToken.swapAsset(
                 proposalToAccept.assetsToTrade[i],
                 proposalToAccept.assetsToReceive[i],
-                proposalToAccept.amountsIn[i]);
+                proposalToAccept.amountsIn[i],
+                proposalToAccept.minAmountsToReceive[i]);
         }
 
         for (uint256 i = 0; i < s_activeProposalIds.length; i++)

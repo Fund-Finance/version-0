@@ -47,10 +47,10 @@ async function main() {
     await fundController.addAssetToFund(await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
 
     const amountToSpendProposal1_usdc = 50_000n;
-    await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await wETH.getAddress()], [amountToSpendProposal1_usdc * 10n ** await usdc.decimals()]);
+    await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await wETH.getAddress()], [amountToSpendProposal1_usdc * 10n ** await usdc.decimals()], [0]);
 
     const amountToSpendProposal2_usdc = 100_000n;
-    await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await cbBTC.getAddress()], [amountToSpendProposal2_usdc * 10n ** await usdc.decimals()]);
+    await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await cbBTC.getAddress()], [amountToSpendProposal2_usdc * 10n ** await usdc.decimals()], [0]);
 
     await fundController.connect(owner).intentToAccept(1n);
     await fundController.connect(owner).intentToAccept(2n);

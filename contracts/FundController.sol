@@ -8,14 +8,15 @@
  * 4. Contract
  *     a. public state variables
  *     b. private state variables
- *     c. constructor
- *     d. modifiers
- *     e. constructor
- *     f. modifiers
- *     g. external functions
- *     h. public functions
- *     i. internal functions
- *     j. private functions
+ *     c. events
+ *     d. constructor
+ *     e. modifiers
+ *     f. constructor
+ *     g. modifiers
+ *     h. external functions
+ *     i. public functions
+ *     j. internal functions
+ *     k. private functions
  **/
 
 // SPDX-License-Identifier: MIT
@@ -112,6 +113,13 @@ contract FundController is Ownable
     IERC20Extended private s_IUSDC;
     AggregatorV3Interface private usdcAggregator;
     IFundToken private s_IFundToken;
+
+    /************** Events ***************/
+
+    /// @notice Emitted when a new proposal is created
+    /// @param proposalId The ID of the newly created proposal
+    /// @param proposer The address of the proposer who created the proposal
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer);
 
     /************** Constructor ***************/
 
@@ -355,10 +363,12 @@ contract FundController is Ownable
     /// @param _assetsToReceive The address of the assets to receive in return
     /// @param _amountsIn The amounts of each asset to trade in WAD (1e18) format
     /// @param _minAmountsToReceive The minimum amounts of each asset to receive in WAD (1e18) format
+    /// @return proposalId The ID of the newly created proposal
     function createProposal(address[] memory _assetsToTrade,
                             address[] memory _assetsToReceive,
                             uint256[] memory _amountsIn,
                             uint256[] memory _minAmountsToReceive) external
+                            returns (uint256 proposalId)
     {
         Proposal memory proposalToCreate = Proposal(
             s_latestProposalId,
@@ -370,7 +380,10 @@ contract FundController is Ownable
             0);
         s_proposals[s_latestProposalId] = proposalToCreate;
         s_activeProposalIds.push(s_latestProposalId);
+        emit ProposalCreated(s_latestProposalId, msg.sender);
+        proposalId = s_latestProposalId;
         s_latestProposalId++;
+        return proposalId;
     }
 
     /// @notice Issues an intent to accept a trade proposal, which starts a timelock for it

@@ -12,6 +12,10 @@ const config: HardhatUserConfig = {
         // but for now assume gas prices are 0
         gasPrice: 0,
         initialBaseFeePerGas: 0,
+        mining: {
+         auto: true,     // automine so transacions process fast
+         interval: 5000, // Regardless, Mine a block every 5 seconds
+       },
     },
     // base_mainnet:
     // {
@@ -28,6 +32,10 @@ const config: HardhatUserConfig = {
         // but for now assume gas prices are 0
         gasPrice: 0,
         initialBaseFeePerGas: 0,
+        mining: {
+         auto: true,     // automine so transacions process fast
+         interval: 5000, // Regardless, Mine a block every 5 seconds
+       },
     },
   }
 };

@@ -60,7 +60,7 @@ async function main() {
     await fundController.connect(owner).acceptProposal(2n);
     console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
     
-    await fundController.connect(owner).setProposalAcceptTimelockDuration(originalProposalAcceptTimelockDuration);
+    await fundController.connect(owner).setProposalAcceptTimelockDuration(20n);
 
     const usdcRealBalance = Number(await usdc.balanceOf(await fundToken.getAddress())) / Number(10n ** await usdc.decimals());
     const wETHRealBalance = Number(await wETH.balanceOf(await fundToken.getAddress())) / Number(10n ** await wETH.decimals());

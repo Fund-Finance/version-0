@@ -463,6 +463,13 @@ contract FundController is Ownable
         return activeProposals;
     }
 
+    /// @notice Gets the list of approvers for the fund
+    /// @return An array of addresses representing the approvers
+    function getApprovers() external view returns(address[] memory)
+    {
+        return s_approvers;
+    }
+
     function getProposalById(uint256 id) external view returns(Proposal memory proposal)
     {
         console.log("Looking for Id: %s", id);

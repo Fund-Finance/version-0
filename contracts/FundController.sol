@@ -11,12 +11,10 @@
  *     c. events
  *     d. constructor
  *     e. modifiers
- *     f. constructor
- *     g. modifiers
- *     h. external functions
- *     i. public functions
- *     j. internal functions
- *     k. private functions
+ *     f. external functions
+ *     g. public functions
+ *     h. internal functions
+ *     i. private functions
  **/
 
 // SPDX-License-Identifier: MIT
@@ -463,6 +461,13 @@ contract FundController is Ownable
             activeProposals[i] = s_proposals[s_activeProposalIds[i]];
         }
         return activeProposals;
+    }
+
+    /// @notice Gets the list of approvers for the fund
+    /// @return An array of addresses representing the approvers
+    function getApprovers() external view returns(address[] memory)
+    {
+        return s_approvers;
     }
 
     function getProposalById(uint256 id) external view returns(Proposal memory proposal)

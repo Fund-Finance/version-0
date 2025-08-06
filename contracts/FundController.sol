@@ -11,12 +11,10 @@
  *     c. events
  *     d. constructor
  *     e. modifiers
- *     f. constructor
- *     g. modifiers
- *     h. external functions
- *     i. public functions
- *     j. internal functions
- *     k. private functions
+ *     f. external functions
+ *     g. public functions
+ *     h. internal functions
+ *     i. private functions
  **/
 
 // SPDX-License-Identifier: MIT

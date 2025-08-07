@@ -451,6 +451,27 @@ contract FundController is Ownable
         return amountsOut;
     }
 
+    /// @notice Rejects a trade proposal and removes it from the active proposals list
+    /// @dev This function can only be called by the approvers of the fund
+    /// @param proposalIdToReject The ID of the proposal to reject
+    function rejectProposal(uint256 proposalIdToReject) external onlyApprover
+    {
+        realizeFundFees();
+
+        // Remove the proposal from the active proposals list
+        for (uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            if (s_activeProposalIds[i] == proposalIdToReject)
+            {
+                s_activeProposalIds[i] = s_activeProposalIds[s_activeProposalIds.length - 1];
+                s_activeProposalIds.pop();
+                break;
+            }
+        }
+
+        delete s_proposals[proposalIdToReject];
+    }
+
     /// @notice Gets the list of active proposals
     /// @return activeProposals An array of active proposals
     function getActiveProposals() external view returns(Proposal[] memory activeProposals)

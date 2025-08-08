@@ -80,3 +80,17 @@
 - Added deploy scripts to begin testing the front-end
 - Added logic to derive per epoch fee from annual fee
 - Updated the main contracts to use nat-spec comments
+
+### v0.5:
+- Added ability to get a proposal by it's ID
+- Added auto re-balancing when buying into the fund
+- Added auto sell out of each asset to USDC when the user redeems their fTokens
+- Added swaps with multiple assets
+- Added a minimum amount to receive from proposals (for safety against bad rates)
+- Added an event/emit when a proposal gets created
+- Edited the `createProposal` function to return the proposal ID of the proposal that was created
+- Added a function to reject a proposal: `rejectProposal`
+- Added an getter function for the approver list: `getApprovers`
+- Added a configuration so that new blocks get mined every 5 seconds
+    - This is to update 'block.timestamp' for the intent to approve time
+- Added more assets (Aave and Chainlink) to the initial deploy setup

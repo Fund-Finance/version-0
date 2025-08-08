@@ -119,6 +119,29 @@ contract FundToken is ERC20, Ownable
         return totalValue;
     }
 
+    // TODO: come up with a better way of writting this function
+    function getValueOfAssetInFund(address _asset) external view returns (uint256)
+    {
+        for(uint256 i = 0; i < s_supportedAssets.length; i++)
+        {
+            if(address(s_supportedAssets[i].token) == _asset)
+            {
+                (,
+                 int256 answer,
+                ,
+                ,
+                ) = s_supportedAssets[i].aggregator.latestRoundData();
+                uint256 assetPrice = uint256(answer) * (10 ** (18 - s_supportedAssets[i].aggregator.decimals()));
+                uint256 tokenPrice = s_supportedAssets[i].token.balanceOf(address(this))
+                    * (10 ** (18 - s_supportedAssets[i].token.decimals()));
+                return FixedPointMathLib.mulWad(assetPrice, tokenPrice);
+
+            }
+        }
+        // Return 0 if asset is not found
+        return 0;
+    }
+
     /// @notice Gets the list of supported assets in the fund token
     /// @return An array of Asset structs representing the supported assets
     function getAssets() external view returns (Asset[] memory)
@@ -131,8 +154,9 @@ contract FundToken is ERC20, Ownable
     /// @param _assetToTrade The address of the asset to trade (e.g., USDC)
     /// @param _assetToGet The address of the asset to get (e.g., WETH)
     /// @param _amountIn The amount of the asset to trade
+    /// @param _minAmountToReceive The minimum amount of the asset to get to receive (slippage protection)
     /// @return amountOut The amount of the asset received from the swap
-    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn) external onlyOwner
+    function swapAsset(address _assetToTrade, address _assetToGet, uint256 _amountIn, uint256 _minAmountToReceive) external onlyOwner
         returns (uint256 amountOut)
     {
         TransferHelper.safeApprove(_assetToTrade, address(s_swapRouter), _amountIn); 
@@ -145,7 +169,7 @@ contract FundToken is ERC20, Ownable
                 recipient: address(this),
                 // deadline: block.timestamp,
                 amountIn: _amountIn,
-                amountOutMinimum: 0,
+                amountOutMinimum: _minAmountToReceive,
                 sqrtPriceLimitX96: 0
             });
         amountOut = s_swapRouter.exactInputSingle(params);

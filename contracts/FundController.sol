@@ -8,14 +8,13 @@
  * 4. Contract
  *     a. public state variables
  *     b. private state variables
- *     c. constructor
- *     d. modifiers
- *     e. constructor
- *     f. modifiers
- *     g. external functions
- *     h. public functions
- *     i. internal functions
- *     j. private functions
+ *     c. events
+ *     d. constructor
+ *     e. modifiers
+ *     f. external functions
+ *     g. public functions
+ *     h. internal functions
+ *     i. private functions
  **/
 
 // SPDX-License-Identifier: MIT
@@ -41,9 +40,10 @@ struct Proposal
 {
     uint256 id;
     address proposer;
-    address assetToTrade;
-    address assetToReceive;
-    uint256 amountIn;
+    address[] assetsToTrade;
+    address[] assetsToReceive;
+    uint256[] amountsIn;
+    uint256[] minAmountsToReceive;
     // Will be 0 until intentToAccept is called by the governor
     uint256 approvalTimelockEnd;
 }
@@ -112,6 +112,13 @@ contract FundController is Ownable
     AggregatorV3Interface private usdcAggregator;
     IFundToken private s_IFundToken;
 
+    /************** Events ***************/
+
+    /// @notice Emitted when a new proposal is created
+    /// @param proposalId The ID of the newly created proposal
+    /// @param proposer The address of the proposer who created the proposal
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer);
+
     /************** Constructor ***************/
 
 
@@ -134,6 +141,8 @@ contract FundController is Ownable
 
         s_IUSDC = IERC20Extended(_usdcAddress);
         usdcAggregator = AggregatorV3Interface(usdcAggregatorAddress);
+        // TODO: Remove this
+        s_approvers.push(msg.sender); // Add the contract deployer as an approver
     }
 
     /************** Modifiers ***************/
@@ -174,6 +183,14 @@ contract FundController is Ownable
         s_approvers = _newApprovers;
     }
 
+    /// @notice Sets the duration of the timelock for accepting a proposal
+    /// @dev This function can only be called by the owner of the contract
+    /// @param _proposalAcceptTimelockDuration The new duration of the timelock in seconds
+    function setProposalAcceptTimelockDuration(uint256 _proposalAcceptTimelockDuration) external onlyOwner
+    {
+        s_proposalAcceptTimelockDuration = _proposalAcceptTimelockDuration;
+    }
+
     /// @notice Sets the duration of an epoch
     /// @dev This function can only be called by the owner of the contract
     /// @dev The epoch duration must be between 1 day and 1 year otherwise it will revert
@@ -203,6 +220,7 @@ contract FundController is Ownable
 
     /// @notice Issues new FundTokens to the user based on the amount of USDC contributed
     /// @dev USDC is assumed to be in 6 decimal format, so we convert it to WAD (1e18) format
+    /// @dev The USDC contribution is distributed proportionally across the fund's existing assets
     /// @param _rawUSDCContributed The raw amount of USDC contributed by the user in 10^6 format
     function issueUsingStableCoin(uint256 _rawUSDCContributed) external
     {
@@ -223,44 +241,110 @@ contract FundController is Ownable
         if (s_IFundToken.totalSupply() == 0)
         {
             amountToMint = FixedPointMathLib.divWad(dollarValue, s_initialFundTokenValue);
+            // For first contribution, just add USDC to the fund
+            s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
         }
-        // otherwise mint such that the ratio of totalSupply to totalFundValue is preserved
+        // otherwise distribute the contribution proportionally across existing assets
         else
         {
+            // Get current fund assets and their values
+            Asset[] memory fundAssets = s_IFundToken.getAssets();
+            uint256 totalFundValueBeforeInvestment = s_IFundToken.getTotalValueOfFund();
+            
+            // Transfer USDC to the fund first
+            s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
+            
+            // Distribute the contribution proportionally across all assets except USDC
+            // Skip USDC (first asset) as we don't want to swap USDC for USDC
+            for (uint256 i = 1; i < fundAssets.length; i++)
+            {
+                // Get the current value of this asset in the fund
+                uint256 assetValue = s_IFundToken.getValueOfAssetInFund(address(fundAssets[i].token));
+                
+                // Calculate what proportion of the contribution should go to this asset
+                uint256 proportionOfContribution = FixedPointMathLib.divWad(
+                    FixedPointMathLib.mulWad(dollarValue, assetValue),
+                    totalFundValueBeforeInvestment
+                );
+                
+                // Convert the dollar proportion back to USDC amount
+                uint256 usdcAmountForAsset = FixedPointMathLib.divWad(
+                    proportionOfContribution,
+                    getUsdcPrice()
+                );
+                
+                // Convert from WAD back to USDC decimals
+                uint256 usdcAmountInAssetDecimals = usdcAmountForAsset / 10 ** (18 - s_IUSDC.decimals());
+                
+                // Only swap if there's a meaningful amount to swap
+                if (usdcAmountInAssetDecimals > 0)
+                {
+                    // Swap USDC for this asset
+                    // TODO: Add a minimum to receive
+                    s_IFundToken.swapAsset(
+                        address(s_IUSDC),
+                        address(fundAssets[i].token),
+                        usdcAmountInAssetDecimals,
+                        0
+                    );
+                }
+            }
+            
+            // Calculate the amount of FundTokens to mint based on the total value
             amountToMint = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(dollarValue,
-                                                s_IFundToken.totalSupply()), s_IFundToken.getTotalValueOfFund());
+                                                s_IFundToken.totalSupply()), totalFundValueBeforeInvestment);
         }
-
-        // then perform the transfer from function
-        s_IUSDC.transferFrom(msg.sender, address(s_IFundToken), _rawUSDCContributed);
 
         s_IFundToken.mint(msg.sender, amountToMint);
     }
 
-    /// @notice Redeems the user's FundTokens for their proportional share of the fund's assets
+    /// @notice Redeems the user's FundTokens for USDC by selling their proportional share of the fund's assets
     /// @param _rawFTokenToRedeem The amount of FundTokens to redeem in WAD (1e18) format
-    function redeemAssets(uint256 _rawFTokenToRedeem) external
+    /// @return totalUsdcReceived The total amount of USDC received from selling the assets
+    function redeemAssets(uint256 _rawFTokenToRedeem) external returns (uint256 totalUsdcReceived)
     {
         realizeFundFees();
-        // redeem the assets first
         require(s_IFundToken.balanceOf(msg.sender) >= _rawFTokenToRedeem, "You do not have enough FUND tokens to redeem");
-        // for now we will redeem assets by giving the user
-        // his proportional share of each underlying asset of the fund
-
+        
+        totalUsdcReceived = 0;
         Asset[] memory fundAssets = s_IFundToken.getAssets();
+        
+        // Sell each asset for USDC and accumulate the total
         for (uint256 i = 0; i < fundAssets.length; i++)
         {
             IERC20 assetToRedeem = fundAssets[i].token;
-            // TODO: confirm if we should be using mulWad here (do things break if assetToRedeem is not in WAD)
+            
+            // Calculate the user's proportional share of this asset
             uint256 amountToRedeem = FixedPointMathLib.divWad(FixedPointMathLib.mulWad(
                 _rawFTokenToRedeem, assetToRedeem.balanceOf(address(s_IFundToken))),
                 s_IFundToken.totalSupply());
-            // transfer the asset to the user
-            assetToRedeem.transferFrom(address(s_IFundToken), msg.sender, amountToRedeem);
+            
+            // If this is USDC, just add it to the total
+            if (address(assetToRedeem) == address(s_IUSDC))
+            {
+                totalUsdcReceived += amountToRedeem;
+            }
+            // Otherwise, swap the asset for USDC
+            else if (amountToRedeem > 0)
+            {
+                // TODO: Add a minimum to receive
+                uint256 usdcReceived = s_IFundToken.swapAsset(
+                    address(assetToRedeem),
+                    address(s_IUSDC),
+                    amountToRedeem,
+                    0
+                );
+                totalUsdcReceived += usdcReceived;
+            }
         }
-        // TODO: look into re-entry attack, should we burn before distributing the assets?
-        // burn the fund tokens
+        
+        // Transfer the total USDC to the user
+        s_IUSDC.transferFrom(address(s_IFundToken), msg.sender, totalUsdcReceived);
+        
+        // Burn the fund tokens
         s_IFundToken.burn(msg.sender, _rawFTokenToRedeem);
+        
+        return totalUsdcReceived;
     }
 
     /// @notice Adds a new asset to the fund which can be traded
@@ -273,21 +357,31 @@ contract FundController is Ownable
     }
 
     /// @notice Creates a new proposal for trading assets in the fund
-    /// @param _assetToTrade The address of the asset to trade
-    /// @param _assetToReceive The address of the asset to receive in return
-    /// @param _amountIn The amount of the asset to trade in WAD (1e18) format
-    function createProposal(address _assetToTrade, address _assetToReceive, uint256 _amountIn) external
+    /// @param _assetsToTrade The address of the assets to trade
+    /// @param _assetsToReceive The address of the assets to receive in return
+    /// @param _amountsIn The amounts of each asset to trade in WAD (1e18) format
+    /// @param _minAmountsToReceive The minimum amounts of each asset to receive in WAD (1e18) format
+    /// @return proposalId The ID of the newly created proposal
+    function createProposal(address[] memory _assetsToTrade,
+                            address[] memory _assetsToReceive,
+                            uint256[] memory _amountsIn,
+                            uint256[] memory _minAmountsToReceive) external
+                            returns (uint256 proposalId)
     {
         Proposal memory proposalToCreate = Proposal(
             s_latestProposalId,
             msg.sender,
-            _assetToTrade,
-            _assetToReceive,
-            _amountIn,
+            _assetsToTrade,
+            _assetsToReceive,
+            _amountsIn,
+            _minAmountsToReceive,
             0);
         s_proposals[s_latestProposalId] = proposalToCreate;
         s_activeProposalIds.push(s_latestProposalId);
+        emit ProposalCreated(s_latestProposalId, msg.sender);
+        proposalId = s_latestProposalId;
         s_latestProposalId++;
+        return proposalId;
     }
 
     /// @notice Issues an intent to accept a trade proposal, which starts a timelock for it
@@ -303,9 +397,9 @@ contract FundController is Ownable
     /// @dev This function can only be called by the approvers of the fund
     /// @dev This function can only be called once the timelock for the proposal has ended
     /// @param proposalIdToAccept The ID of the proposal to accept
-    /// @return amountOut The amount of the asset received in return for the trade
+    /// @return amountsOut The amount of the asset received in return for the trade
     function acceptProposal(uint256 proposalIdToAccept) external onlyApprover
-        returns (uint256 amountOut)
+        returns (uint256[] memory amountsOut)
     {
         realizeFundFees();
         Proposal memory proposalToAccept = s_proposals[proposalIdToAccept];
@@ -313,10 +407,15 @@ contract FundController is Ownable
         require(proposalToAccept.approvalTimelockEnd != 0, "This proposal isn't active or was never issued an intentToAccept");
         require(block.timestamp > proposalToAccept.approvalTimelockEnd, "The timelock for this proposal has not ended");
 
-        amountOut = s_IFundToken.swapAsset(
-            proposalToAccept.assetToTrade,
-            proposalToAccept.assetToReceive,
-            proposalToAccept.amountIn);
+        amountsOut = new uint256[](proposalToAccept.assetsToTrade.length);
+        for(uint256 i = 0; i < proposalToAccept.assetsToTrade.length; i++)
+        {
+            amountsOut[i] = s_IFundToken.swapAsset(
+                proposalToAccept.assetsToTrade[i],
+                proposalToAccept.assetsToReceive[i],
+                proposalToAccept.amountsIn[i],
+                proposalToAccept.minAmountsToReceive[i]);
+        }
 
         for (uint256 i = 0; i < s_activeProposalIds.length; i++)
         {
@@ -349,7 +448,28 @@ contract FundController is Ownable
         }
         successfulProposer.acceptedProposals.push(proposalToAccept);
         
-        return amountOut;
+        return amountsOut;
+    }
+
+    /// @notice Rejects a trade proposal and removes it from the active proposals list
+    /// @dev This function can only be called by the approvers of the fund
+    /// @param proposalIdToReject The ID of the proposal to reject
+    function rejectProposal(uint256 proposalIdToReject) external onlyApprover
+    {
+        realizeFundFees();
+
+        // Remove the proposal from the active proposals list
+        for (uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            if (s_activeProposalIds[i] == proposalIdToReject)
+            {
+                s_activeProposalIds[i] = s_activeProposalIds[s_activeProposalIds.length - 1];
+                s_activeProposalIds.pop();
+                break;
+            }
+        }
+
+        delete s_proposals[proposalIdToReject];
     }
 
     /// @notice Gets the list of active proposals
@@ -362,6 +482,30 @@ contract FundController is Ownable
             activeProposals[i] = s_proposals[s_activeProposalIds[i]];
         }
         return activeProposals;
+    }
+
+    /// @notice Gets the list of approvers for the fund
+    /// @return An array of addresses representing the approvers
+    function getApprovers() external view returns(address[] memory)
+    {
+        return s_approvers;
+    }
+
+    function getProposalById(uint256 id) external view returns(Proposal memory proposal)
+    {
+        console.log("Looking for Id: %s", id);
+        for(uint256 i = 0; i < s_activeProposalIds.length; i++)
+        {
+            if (s_activeProposalIds[i] == id)
+            {
+                console.log("Found Id: %s", id);
+                console.log("Proposals length: %s", s_activeProposalIds.length);
+                proposal = s_proposals[s_activeProposalIds[i]];
+                return proposal;
+            }
+        }
+        console.log("Proposal with ID %s does not exist", id);
+        revert("Proposal with the given ID does not exist");
     }
 
     /************** Public Functions ***************/
@@ -500,4 +644,6 @@ contract FundController is Ownable
         // Subtract 1e18 to get just the fee
         return growthFactor - 1e18;
     }
+
+
 }

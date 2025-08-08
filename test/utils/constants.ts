@@ -31,11 +31,15 @@ interface BlockchainNetworkConstants
     usdcAddress: string;
     wETHAddress:string;
     cbBTCAddress: string;
+    linkAddress: string;
+    aaveAddress: string;
 
     // the Addresses of the Aggregators
     usdcAggregatorAddress: string;
     wETHAggregatorAddress: string;
     cbBTCAggregatorAddress: string;
+    linkAggregatorAddress: string;
+    aaveAggregatorAddress: string;
 
     // the Addresses of the whales (users with a lot of these tokens)
     usdcWhaleAddress: string;
@@ -51,12 +55,16 @@ export const baseMainnetConstants: BlockchainNetworkConstants =
     usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     wETHAddress: "0x4200000000000000000000000000000000000006",
     cbBTCAddress: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+    linkAddress: "0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196",
+    aaveAddress: "0x63706e401c06ac8513145b7687A14804d17f814b",
 
     usdcAggregatorAddress: "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
     // TODO: This is actually the ETH/USD aggregator, I couldn't find the wETH aggregator
     // We need to check if this will make a difference
     wETHAggregatorAddress: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
     cbBTCAggregatorAddress: "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D",
+    linkAggregatorAddress: "0x17CAb8FE31E32f08326e5E27412894e49B0f9D65",
+    aaveAggregatorAddress: "0x3d6774EF702A10b20FCa8Ed40FC022f7E4938e07",
 
     usdcWhaleAddress: "0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3",
     wETHWhaleAddress: "0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7",

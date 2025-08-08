@@ -15,11 +15,11 @@ async function main() {
     console.log("FundToken deployed at:", await fundToken.getAddress());
 
 
-    const { owner, addr1, cbBTC, wETH, usdc, usdcAggregator } = await loadFixture(contractDeploymentForkedFixture);
+    const { owner, addr1, cbBTC, wETH, usdc, link, aave } = await loadFixture(contractDeploymentForkedFixture);
 
     const amountToApprove_usdc = 100_000_000n; // 100 million USDC
 
-    const amountToSpend_usdc = 200_000n;
+    const amountToSpend_usdc = 300_000n;
 
     // mint
     await usdc.connect(owner).approve(await fundController.getAddress(),
@@ -45,19 +45,45 @@ async function main() {
 
     await fundController.addAssetToFund(await wETH.getAddress(), baseMainnetConstants.wETHAggregatorAddress);
     await fundController.addAssetToFund(await cbBTC.getAddress(), baseMainnetConstants.cbBTCAggregatorAddress);
+    await fundController.addAssetToFund(await aave.getAddress(), baseMainnetConstants.aaveAggregatorAddress);
+    await fundController.addAssetToFund(await link.getAddress(), baseMainnetConstants.linkAggregatorAddress);
 
     const amountToSpendProposal1_usdc = 50_000n;
-    await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await wETH.getAddress()], [amountToSpendProposal1_usdc * 10n ** await usdc.decimals()], [0]);
+    let tx = await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await wETH.getAddress()], [amountToSpendProposal1_usdc * 10n ** await usdc.decimals()], [0]);
+    await tx.wait();
 
     const amountToSpendProposal2_usdc = 100_000n;
-    await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await cbBTC.getAddress()], [amountToSpendProposal2_usdc * 10n ** await usdc.decimals()], [0]);
+    tx = await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await cbBTC.getAddress()], [amountToSpendProposal2_usdc * 10n ** await usdc.decimals()], [0]);
+    await tx.wait();
 
-    await fundController.connect(owner).intentToAccept(1n);
-    await fundController.connect(owner).intentToAccept(2n);
+    const amountToSpendProposal3_usdc = 2_000n;
+    tx = await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await link.getAddress()], [amountToSpendProposal3_usdc * 10n ** await usdc.decimals()], [0]);
+    await tx.wait();
 
-    await fundController.connect(owner).acceptProposal(1n);
+    const amountToSpendProposal4_usdc = 15_000n;
+    tx = await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await aave.getAddress()], [amountToSpendProposal4_usdc * 10n ** await usdc.decimals()], [0]);
+    await tx.wait();
+
+    const tx1 = await fundController.connect(owner).intentToAccept(1n);
+    await tx1.wait();
+    const tx2 = await fundController.connect(owner).intentToAccept(2n);
+    await tx2.wait();
+    const tx3 = await fundController.connect(owner).intentToAccept(3n);
+    await tx3.wait();
+    const tx4 = await fundController.connect(owner).intentToAccept(4n);
+    await tx4.wait();
+
+    const tx5 = await fundController.connect(owner).acceptProposal(1n);
+    await tx5.wait();
     console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
-    await fundController.connect(owner).acceptProposal(2n);
+    const tx6 = await fundController.connect(owner).acceptProposal(2n);
+    await tx6.wait();
+    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+    const tx7 = await fundController.connect(owner).acceptProposal(3n);
+    await tx7.wait();
+    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+    const tx8 = await fundController.connect(owner).acceptProposal(4n);
+    await tx8.wait();
     console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
     
     await fundController.connect(owner).setProposalAcceptTimelockDuration(20n);
@@ -76,6 +102,7 @@ async function main() {
 
     // the total value of the fund decreases with each trade due to fees
     console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+    console.log("Chainlink amount in fund: ", await link.balanceOf(await fundToken.getAddress()));
 
     console.log()
     console.log("USDC allowance for fund controller: ", await usdc.allowance(await owner.getAddress(), await fundController.getAddress()));

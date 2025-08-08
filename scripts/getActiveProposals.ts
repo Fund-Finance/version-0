@@ -24,9 +24,9 @@ async function main() {
   console.log("Active Proposals:");
   console.log(activeProposals);
 
-  const proposalById = await contract.getProposalById(3);
-  console.log("Proposal By Id:");
-  console.log(proposalById);
+  // const proposalById = await contract.getProposalById(3);
+  // console.log("Proposal By Id:");
+  // console.log(proposalById);
 }
 
 main().catch((error) => {

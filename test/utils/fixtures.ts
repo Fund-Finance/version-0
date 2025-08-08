@@ -211,6 +211,10 @@ export async function contractDeploymentLocalFixture()
  * @returns wETHAggregator: the wETH Aggregator contract
  * @returns usdc: the USDC ERC20 contract
  * @returns usdcAggregator: the USDC Aggregator contract
+ * @returns link: the LINK ERC20 contract
+ * @returns linkAggregator: the LINK Aggregator contract
+ * @returns aave: the AAVE ERC20 contract
+ * @returns aaveAggregator: the AAVE Aggregator contract
  */
 export async function contractDeploymentForkedFixture()
 {
@@ -265,6 +269,8 @@ export async function contractDeploymentForkedFixture()
     const cbBTC: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.cbBTCAddress);
     const wETH: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.wETHAddress);
     const usdc: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.usdcAddress);
+    const link: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.linkAddress);
+    const aave: IERC20Extended = await hre.ethers.getContractAt("IERC20Extended", baseMainnetConstants.aaveAddress);
 
     // send some tokens to the owner, addr1, and addr2
     const AmountToSendAddresses_cbBTC = 2n;
@@ -328,8 +334,14 @@ export async function contractDeploymentForkedFixture()
     const cbBTCAggregator: AggregatorV3Interface = await hre.ethers.getContractAt(
         "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
         baseMainnetConstants.cbBTCAggregatorAddress);
+    const linkAggregator: AggregatorV3Interface = await hre.ethers.getContractAt(
+        "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
+        baseMainnetConstants.linkAggregatorAddress);
+    const aaveAggregator: AggregatorV3Interface = await hre.ethers.getContractAt(
+        "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
+        baseMainnetConstants.aaveAggregatorAddress);
 
     return { owner, addr1, addr2, fundToken, fundController,
-        cbBTC, cbBTCAggregator, wETH, wETHAggregator, usdc, usdcAggregator};
+        cbBTC, cbBTCAggregator, wETH, wETHAggregator, usdc, usdcAggregator, link, linkAggregator, aave, aaveAggregator};
 }
 

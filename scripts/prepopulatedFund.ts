@@ -9,14 +9,14 @@ import { baseMainnetConstants } from "../test/utils/constants";
 
 
 async function main() {
-    const { fundController, fundToken } = await hre.ignition.deploy(FundFinanceModule);
+    // const { fundController, fundToken } = await hre.ignition.deploy(FundFinanceModule);
     
+
+
+    const { owner, addr1, user, cbBTC, wETH, usdc, link, aave, fundController, fundToken } = await loadFixture(contractDeploymentForkedFixture);
+
     console.log("FundController deployed at:", await fundController.getAddress());
     console.log("FundToken deployed at:", await fundToken.getAddress());
-
-
-    const { owner, addr1, user, cbBTC, wETH, usdc, link, aave } = await loadFixture(contractDeploymentForkedFixture);
-
 
 
     const amountToApprove_usdc = 100_000_000n; // 100 million USDC
@@ -44,7 +44,7 @@ async function main() {
 
     // add the assets to the fund:
 
-    const originalProposalAcceptTimelockDuration = await fundController.s_proposalAcceptTimelockDuration();
+    // const originalProposalAcceptTimelockDuration = await fundController.s_proposalAcceptTimelockDuration();
 
     await fundController.connect(owner).setProposalAcceptTimelockDuration(0n);
 

@@ -224,6 +224,15 @@ export async function contractDeploymentForkedFixture()
     await mine(1);
     const [owner, addr1, addr2] = await hre.ethers.getSigners();
 
+    // const addr1Address = "0x4db74f41da079e01b0F85AffBc5Fe5ed7B1E6b6B";
+    // // 1️⃣ Impersonate the account
+    // await hre.network.provider.request({
+    //   method: "hardhat_impersonateAccount",
+    //   params: [addr1Address],
+    // });
+    // owner.sendTransaction({ to: addr1Address, value: hre.ethers.parseEther("100") });
+    // const addr1 = await hre.ethers.getSigner(addr1Address);
+
     /************** DEPLOY CORE CONTRACTS ******************/
 
     // deploy and test the Fund Controller
@@ -277,12 +286,30 @@ export async function contractDeploymentForkedFixture()
     const AmountToSendAddresses_wETH = 5n;
     const AmountToSendAddresses_usdc = 10_000_000n;
 
+
+    // const userAddress = "0x4db74f41da079e01b0F85AffBc5Fe5ed7B1E6b6B";
+    const userAddress = "0x4a1C6EF7FAE195E309519EDd5Db7d9f36dA1D3f3";
+    // 1️⃣ Impersonate the account
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [userAddress],
+    });
+    owner.sendTransaction({ to: userAddress, value: hre.ethers.parseEther("100") });
+
+    const user = await hre.ethers.getSigner(userAddress);
     /// send the tokens to the owner
     await cbBTC.connect(cbBTCWhaleSigner).transfer(owner.address,
         AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
     await wETH.connect(wETHWhaleSigner).transfer(owner.address,
         AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
     await usdc.connect(usdcWhaleSigner).transfer(owner.address,
+        AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
+
+    await cbBTC.connect(cbBTCWhaleSigner).transfer(user.address,
+        AmountToSendAddresses_cbBTC * 10n ** await cbBTC.decimals());
+    await wETH.connect(wETHWhaleSigner).transfer(user.address,
+        AmountToSendAddresses_wETH * 10n ** await wETH.decimals());
+    await usdc.connect(usdcWhaleSigner).transfer(user.address,
         AmountToSendAddresses_usdc * 10n ** await usdc.decimals());
 
     /// send the tokens to addr1
@@ -341,7 +368,7 @@ export async function contractDeploymentForkedFixture()
         "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol:AggregatorV3Interface",
         baseMainnetConstants.aaveAggregatorAddress);
 
-    return { owner, addr1, addr2, fundToken, fundController,
+    return { owner, addr1, addr2, user, fundToken, fundController,
         cbBTC, cbBTCAggregator, wETH, wETHAggregator, usdc, usdcAggregator, link, linkAggregator, aave, aaveAggregator};
 }
 

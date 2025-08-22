@@ -1,2 +1,1 @@
-npx hardhat ignition deploy ./ignition/modules/FundFinanceContracts.ts --network localhost
 npx hardhat run scripts/prepopulatedFund.ts  --network localhost

@@ -10,7 +10,7 @@ import { baseMainnetConstants } from "../test/utils/constants";
 
 
 async function main() {
-   const contractAddress = "0x6D39d71fF4ab56a4873febd34e1a3BDefc01b41e";
+   const contractAddress = "0xFFb218E9664AA2998b8d3f8CE8c0577227e22C44";
 
   // Get the contract factory (for ABI and bytecode)
   const MyToken = await hre.ethers.getContractFactory("FundController");

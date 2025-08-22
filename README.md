@@ -94,3 +94,8 @@
 - Added a configuration so that new blocks get mined every 5 seconds
     - This is to update 'block.timestamp' for the intent to approve time
 - Added more assets (Aave and Chainlink) to the initial deploy setup
+
+### v0.5.1:
+- Adjusted the deploy scripts for experimenting with the CDP embedded wallets
+- Changed the block number to fork from to have access to a more updated blockchain state
+    - Adjusted the smart contract addresses which were changed as a result of the change in block number to fork

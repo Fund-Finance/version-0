@@ -281,6 +281,7 @@ contract FundController is Ownable
                 {
                     // Swap USDC for this asset
                     // TODO: Add a minimum to receive
+                    console.log("Swapping %s USDC for %s", usdcAmountInAssetDecimals, address(fundAssets[i].token));
                     s_IFundToken.swapAsset(
                         address(s_IUSDC),
                         address(fundAssets[i].token),

@@ -9,13 +9,15 @@ import { baseMainnetConstants } from "../test/utils/constants";
 
 
 async function main() {
-    const { fundController, fundToken } = await hre.ignition.deploy(FundFinanceModule);
+    // const { fundController, fundToken } = await hre.ignition.deploy(FundFinanceModule);
     
+
+
+    const { owner, addr1, user, cbBTC, wETH, usdc, link, aave, fundController, fundToken } = await loadFixture(contractDeploymentForkedFixture);
+
     console.log("FundController deployed at:", await fundController.getAddress());
     console.log("FundToken deployed at:", await fundToken.getAddress());
 
-
-    const { owner, addr1, cbBTC, wETH, usdc, link, aave } = await loadFixture(contractDeploymentForkedFixture);
 
     const amountToApprove_usdc = 100_000_000n; // 100 million USDC
 
@@ -23,6 +25,9 @@ async function main() {
 
     // mint
     await usdc.connect(owner).approve(await fundController.getAddress(),
+        amountToApprove_usdc * 10n ** await usdc.decimals());
+
+    await usdc.connect(user).approve(await fundController.getAddress(),
         amountToApprove_usdc * 10n ** await usdc.decimals());
 
     await usdc.connect(addr1).approve(await fundController.getAddress(),
@@ -33,13 +38,13 @@ async function main() {
 
     console.log("Usdc that the fund has: ", await usdc.balanceOf(await fundToken.getAddress()));
 
-    console.log("FundToken total supply: ", await fundToken.totalSupply());
-    console.log("FundToken balance of owner: ", await fundToken.balanceOf(await owner.getAddress()));
-    console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
+    // console.log("FundToken total supply: ", await fundToken.totalSupply());
+    // console.log("FundToken balance of owner: ", await fundToken.balanceOf(await owner.getAddress()));
+    // console.log("Total value of fund: ", await fundToken.getTotalValueOfFund());
 
     // add the assets to the fund:
 
-    const originalProposalAcceptTimelockDuration = await fundController.s_proposalAcceptTimelockDuration();
+    // const originalProposalAcceptTimelockDuration = await fundController.s_proposalAcceptTimelockDuration();
 
     await fundController.connect(owner).setProposalAcceptTimelockDuration(0n);
 
@@ -60,7 +65,7 @@ async function main() {
     tx = await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await link.getAddress()], [amountToSpendProposal3_usdc * 10n ** await usdc.decimals()], [0]);
     await tx.wait();
 
-    const amountToSpendProposal4_usdc = 15_000n;
+    const amountToSpendProposal4_usdc = 5_000n;
     tx = await fundController.connect(addr1).createProposal([await usdc.getAddress()], [await aave.getAddress()], [amountToSpendProposal4_usdc * 10n ** await usdc.decimals()], [0]);
     await tx.wait();
 
@@ -106,6 +111,10 @@ async function main() {
 
     console.log()
     console.log("USDC allowance for fund controller: ", await usdc.allowance(await owner.getAddress(), await fundController.getAddress()));
+
+    console.log("USDC of user: ", await usdc.balanceOf(await user.getAddress()));
+    console.log("Ether of user: ", await hre.ethers.provider.getBalance(await user.getAddress()));
+
 
 }
 
